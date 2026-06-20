@@ -36,3 +36,22 @@ python -m shuttle_monitor.monitor --live --output
 ## GitHub Pages
 
 工作流会按计划运行并使用 GitHub Pages 官方 Actions 部署静态文件。
+
+## 代理与风控
+
+工作流会读取仓库 Secret `PROXY_SUBSCRIPTIONS`，复用汽车/手机仓库的 mihomo 运行时：
+
+- 支持普通订阅 URL、JSON 数组，或 `{"subscriptions": [...], "exclude_keywords": [...]}`。
+- 自动下载 mihomo、解析订阅、生成 Clash 配置并暴露 `127.0.0.1:7890/7891`。
+- 监控程序每次请求前会调用 mihomo 控制端口随机切换 `GLOBAL` 节点，尽量降低淘宝、京东、拼多多、什么值得买、中羽在线等页面的风控命中率。
+- 如果没有配置 Secret 或订阅不可用，工作流会退化为直连并继续产出页面，避免整站中断。
+
+## 爆料源
+
+除电商搜索页外，`products.yaml` 已加入以下线索源：
+
+- 什么值得买羽毛球搜索页。
+- 中羽在线论坛装备/商家优惠板块。
+- 企业微信“中羽羽球线报”：通过 `WEWORK_ZHONGYU_WIRE_JSON` 环境变量注入已收集的群消息 JSON 或逐行文本。
+
+企业微信消息建议由外部机器人/转发脚本写入 GitHub Actions Secret 或定时 artifact，再由本项目统一解析价格和关键词。

@@ -35,8 +35,13 @@ jobs:
       - name: Run tests
         run: pytest
 
+      - name: Setup rotating proxy
+        env:
+          PROXY_SUBSCRIPTIONS: ${{ secrets.PROXY_SUBSCRIPTIONS }}
+        run: python custom_scripts/setup_proxy_runtime.py
+
       - name: Build Pages site
-        run: python -m shuttle_monitor.monitor --output
+        run: python -m shuttle_monitor.monitor --live --output
 
       - name: Setup Pages
         uses: actions/configure-pages@v5

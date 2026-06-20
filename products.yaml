@@ -78,3 +78,17 @@ discounts:
     threshold: 200
     amount: 30
     stackable: true
+
+buzz_sources:
+  - id: smzdm
+    name: 什么值得买羽毛球爆料
+    url: https://search.smzdm.com/?c=home&s=%E7%BE%BD%E6%AF%9B%E7%90%83
+    keywords: [羽毛球, 尤尼克斯, 亚狮龙, 李宁, 胜利, 澳加林, 华美]
+  - id: zhongyu
+    name: 中羽在线装备/商家优惠
+    url: https://bbs.badmintoncn.com/forum.php?mod=forumdisplay&fid=48
+    keywords: [商家, 优惠, 特价, 羽毛球, 到手, 券]
+  - id: wework-zhongyu-wire
+    name: 企业微信@中羽羽球线报
+    url: env:WEWORK_ZHONGYU_WIRE_JSON
+    keywords: [羽毛球, 线报, 满减, 券后, 到手]
