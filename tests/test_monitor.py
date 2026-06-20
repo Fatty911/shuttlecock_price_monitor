@@ -9,7 +9,8 @@ def test_extract_candidate_price_and_speed():
     assert candidates
     assert candidates[0].base_price == 118
     assert candidates[0].speed == "77"
-    assert candidates[0].stock_status == "可能有货"
+    assert candidates[0].stock_status == "有货/可购买关键词命中"
+    assert candidates[0].stock_quantity == "页面未披露"
 
 
 def test_cart_discount_allocation_and_lowest_selection():

@@ -1,6 +1,6 @@
 # 羽毛球最低到手价监控
 
-用于监控淘宝/天猫、京东、拼多多上常用羽毛球型号的最低到手价，生成 GitHub Pages 静态页，域名配置为 `shuttlecocks.jiucai.eu.org`。
+用于监控淘宝/天猫、京东、拼多多上常用羽毛球型号的最低到手价，生成 GitHub Pages 静态页。
 
 ## 监控目标
 
@@ -30,7 +30,6 @@ python -m shuttle_monitor.monitor --live --output
 ## 输出
 
 - `site/index.html`：GitHub Pages 页面。
-- `site/CNAME`：自定义域名 `shuttlecocks.jiucai.eu.org`。
 - `site/data/results.json`：机器可读监控结果。
 
 ## GitHub Pages

@@ -23,6 +23,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CONFIG_PATH = ROOT / "products.yaml"
 SITE_DIR = ROOT / "site"
 DATA_DIR = SITE_DIR / "data"
+BJ_TZ = dt.timezone(dt.timedelta(hours=8), name="Asia/Shanghai")
 CLASH_API = os.getenv("CLASH_API", "http://127.0.0.1:9090")
 LOCAL_HTTP_PROXY = os.getenv("SHUTTLE_HTTP_PROXY") or os.getenv("HTTPS_PROXY") or os.getenv("HTTP_PROXY")
 
@@ -59,6 +60,7 @@ class Candidate:
     source: str
     coupon_note: str
     stock_status: str
+    stock_quantity: str
     confidence: int
     checked_at: str
 
@@ -153,16 +155,29 @@ def infer_speed(text: str) -> str:
 
 def stock_status(text: str) -> str:
     if any(word in text for word in SOLD_OUT_WORDS):
-        return "可能缺货"
+        return "缺货/售罄关键词命中"
     if any(word in text for word in IN_STOCK_WORDS):
-        return "可能有货"
-    return "需人工复核"
+        return "有货/可购买关键词命中"
+    return "未识别库存关键词"
+
+
+def stock_quantity(text: str) -> str:
+    match = re.search(r"(?:库存|剩余|仅剩|还剩)\s*([0-9]+)\s*(?:件|筒|桶|箱|个)?", text)
+    if match:
+        return match.group(1)
+    if any(word in text for word in SOLD_OUT_WORDS):
+        return "0"
+    return "页面未披露"
+
+
+def now_bj() -> str:
+    return dt.datetime.now(BJ_TZ).strftime("%Y-%m-%d %H:%M:%S 北京时间")
 
 
 def extract_candidates_from_text(text: str, channel: dict[str, Any], model: dict[str, str], source_url: str) -> list[Candidate]:
     if not text:
         return []
-    now = dt.datetime.now(dt.UTC).isoformat(timespec="seconds")
+    now = now_bj()
     keywords = [model["brand"], model["model"]]
     windows = []
     for keyword in keywords:
@@ -196,6 +211,7 @@ def extract_candidates_from_text(text: str, channel: dict[str, Any], model: dict
                 source="search-page",
                 coupon_note=channel.get("cart_discount_note", ""),
                 stock_status=stock_status(window),
+                stock_quantity=stock_quantity(window),
                 confidence=min(confidence, 100),
                 checked_at=now,
             )
@@ -204,7 +220,7 @@ def extract_candidates_from_text(text: str, channel: dict[str, Any], model: dict
 
 
 def fixture_candidates(config: dict[str, Any]) -> list[Candidate]:
-    now = dt.datetime.now(dt.UTC).isoformat(timespec="seconds")
+    now = now_bj()
     rows: list[Candidate] = []
     for channel in config["channels"]:
         for idx, model in enumerate(model_entries(config), 1):
@@ -215,7 +231,7 @@ def fixture_candidates(config: dict[str, Any]) -> list[Candidate]:
                     brand=model["brand"], model=model["model"], speed="76/77/78", title=f"{model['brand']} {model['model']} 羽毛球 12只装 速度可选",
                     url=channel["search_url"].format(query=quote_plus(f"{model['brand']} {model['model']} 羽毛球")), seller="待抓取确认",
                     base_price=float(synthetic_price), quantity=1, source="baseline-watchlist", coupon_note=channel.get("cart_discount_note", ""),
-                    stock_status="待抓取", confidence=30, checked_at=now,
+                    stock_status="待抓取", stock_quantity="待抓取", confidence=30, checked_at=now,
                 )
             )
     return rows
@@ -257,7 +273,7 @@ def load_wework_items(source: dict[str, Any]) -> list[dict[str, str]]:
 
 def build_buzz_records(config: dict[str, Any], live: bool) -> list[dict[str, Any]]:
     records: list[dict[str, Any]] = []
-    checked_at = dt.datetime.now(dt.UTC).isoformat(timespec="seconds")
+    checked_at = now_bj()
     for source in config.get("buzz_sources", []):
         url = str(source.get("url", ""))
         if url.startswith("env:"):
@@ -272,6 +288,9 @@ def build_buzz_records(config: dict[str, Any], live: bool) -> list[dict[str, Any
         text, error, _, node = fetch_text(url)
         if error and not text:
             records.append({"source": source["name"], "title": f"抓取失败：{error}", "url": url, "price": None, "proxy_node": node, "checked_at": checked_at})
+            continue
+        if "验证后可正常使用网站" in text or "请回答问题" in text:
+            records.append({"source": source["name"], "title": "触发验证码/防爬，未采纳为价格线索", "url": url, "price": None, "proxy_node": node, "checked_at": checked_at})
             continue
         for window in deal_windows(text, source.get("keywords", DEAL_WORDS))[:20]:
             records.append({"source": source["name"], "title": window[:160], "url": url, "price": extract_first_price(window), "proxy_node": node, "checked_at": checked_at})
@@ -296,16 +315,17 @@ def best_cart_allocations(candidates: list[Candidate], rules: list[DiscountRule]
     output: list[dict[str, Any]] = []
     for channel, items in by_channel.items():
         channel_rules = [rule for rule in rules if rule.channel == channel]
-        subtotal = sum(item.subtotal for item in items)
+        priced_items = [item for item in items if item.base_price < 9999]
+        subtotal = sum(item.subtotal for item in priced_items)
         discount, labels = discount_for_subtotal(subtotal, channel_rules)
         factor = (subtotal - discount) / subtotal if subtotal else 1
         for item in items:
             output.append({
                 **item.__dict__,
                 "cart_subtotal": round(subtotal, 2),
-                "allocated_discount": round(item.subtotal * (1 - factor), 2),
-                "effective_price": round(item.base_price * factor, 2),
-                "discounts": labels,
+                "allocated_discount": round(item.subtotal * (1 - factor), 2) if item.base_price < 9999 else 0,
+                "effective_price": round(item.base_price * factor, 2) if item.base_price < 9999 else None,
+                "discounts": labels if item.base_price < 9999 else [],
             })
     return output
 
@@ -315,9 +335,11 @@ def lowest_per_channel_model(records: list[dict[str, Any]]) -> list[dict[str, An
     for record in records:
         key = (record["channel"], record["model_key"])
         old = best.get(key)
-        if old is None or (record["effective_price"], -record["confidence"]) < (old["effective_price"], -old["confidence"]):
+        record_price = record["effective_price"] if record["effective_price"] is not None else 999999
+        old_price = old["effective_price"] if old and old["effective_price"] is not None else 999999
+        if old is None or (record_price, -record["confidence"]) < (old_price, -old["confidence"]):
             best[key] = record
-    return sorted(best.values(), key=lambda r: (r["model_key"], r["effective_price"], r["channel"]))
+    return sorted(best.values(), key=lambda r: (r["model_key"], r["effective_price"] if r["effective_price"] is not None else 999999, r["channel"]))
 
 
 def build_records(config: dict[str, Any], live: bool, max_models: int | None = None, shard_index: int = 0, shard_total: int = 1) -> list[dict[str, Any]]:
@@ -335,11 +357,11 @@ def build_records(config: dict[str, Any], live: bool, max_models: int | None = N
                 text, error, used_browser, node = fetch_text(url)
                 found = extract_candidates_from_text(text, channel, model, url)
                 if not found:
-                    now = dt.datetime.now(dt.UTC).isoformat(timespec="seconds")
+                    now = now_bj()
                     source = "search-fallback-browser" if used_browser else "search-fallback"
                     if node:
                         source += f":{node}"
-                    found = [Candidate(channel["id"], channel["name"], f"{model['brand']} {model['model']}", model["brand"], model["model"], "未识别", f"未自动识别：{error or '页面未出现可解析价格'}", url, "未识别", 9999.0, 1, source, channel.get("cart_discount_note", ""), "需人工复核", 0, now)]
+                    found = [Candidate(channel["id"], channel["name"], f"{model['brand']} {model['model']}", model["brand"], model["model"], "未识别", f"未自动识别：{error or '页面未出现可解析价格'}", url, "未识别", 9999.0, 1, source, channel.get("cart_discount_note", ""), "未识别库存关键词", "页面未披露", 0, now)]
                 candidates.extend(found)
     else:
         candidates = fixture_candidates(config)
@@ -348,11 +370,11 @@ def build_records(config: dict[str, Any], live: bool, max_models: int | None = N
 
 
 def render_html(records: list[dict[str, Any]], buzz_records: list[dict[str, Any]]) -> str:
-    generated_at = dt.datetime.now(dt.UTC).strftime("%Y-%m-%d %H:%M:%S UTC")
+    generated_at = now_bj()
     rows = []
     for item in records:
         discounts = "；".join(item.get("discounts") or ["未识别/无"])
-        price = "需人工复核" if item["effective_price"] >= 9999 else f"¥{item['effective_price']:.2f}"
+        price = "未抓到价格" if item["effective_price"] is None else f"¥{item['effective_price']:.2f}"
         rows.append("<tr>" + "".join([
             f"<td>{html.escape(item['channel_name'])}</td>",
             f"<td><a href='{html.escape(item['url'])}'>{html.escape(item['model_key'])}</a></td>",
@@ -360,6 +382,8 @@ def render_html(records: list[dict[str, Any]], buzz_records: list[dict[str, Any]
             f"<td>{price}</td>",
             f"<td>{html.escape(discounts)}</td>",
             f"<td>{html.escape(item['stock_status'])}</td>",
+            f"<td>{html.escape(item.get('stock_quantity', '页面未披露'))}</td>",
+            f"<td>{html.escape(item['checked_at'])}</td>",
             f"<td>{item['confidence']}</td>",
             f"<td>{html.escape(item['seller'])}</td>",
             f"<td>{html.escape(item['coupon_note'])}</td>",
@@ -368,7 +392,7 @@ def render_html(records: list[dict[str, Any]], buzz_records: list[dict[str, Any]
     for item in buzz_records:
         price = "" if item.get("price") is None else f"¥{item['price']:.2f}"
         buzz_rows.append("<tr>" + "".join([f"<td>{html.escape(item['source'])}</td>", f"<td><a href='{html.escape(item.get('url', ''))}'>{html.escape(item['title'])}</a></td>", f"<td>{price}</td>", f"<td>{html.escape(str(item.get('proxy_node', '')))}</td>"]) + "</tr>")
-    return f"""<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>羽毛球最低到手价监控</title><style>body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;margin:24px;color:#172033}}table{{border-collapse:collapse;width:100%;font-size:14px;margin-bottom:24px}}th,td{{border:1px solid #d7dde8;padding:8px;vertical-align:top}}th{{background:#f3f6fb}}.hint{{background:#fff7ed;border:1px solid #fed7aa;padding:12px;margin:16px 0}}.ok{{color:#047857;font-weight:700}}</style></head><body><h1>羽毛球最低到手价监控</h1><p>生成时间：{generated_at}。域名：<span class="ok">shuttlecocks.jiucai.eu.org</span></p><div class="hint">爬虫支持通过 PROXY_SUBSCRIPTIONS 启动 mihomo 翻墙订阅代理，并在每次请求前尝试切换 GLOBAL 节点降低风控风险。自动价仍会受账号券、支付券、地区库存影响，下单前请二次确认。</div><h2>电商最低到手价</h2><table><thead><tr><th>电商渠道</th><th>羽毛球型号</th><th>球速</th><th>到手价/筒</th><th>满减/券</th><th>库存</th><th>置信度</th><th>卖家</th><th>领券/备注</th></tr></thead><tbody>{''.join(rows)}</tbody></table><h2>爆料平台线索</h2><table><thead><tr><th>来源</th><th>线索</th><th>识别价格</th><th>代理节点</th></tr></thead><tbody>{''.join(buzz_rows)}</tbody></table><p>机器可读数据：<a href="data/results.json">data/results.json</a> / <a href="data/buzz.json">data/buzz.json</a></p></body></html>"""
+    return f"""<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>羽毛球最低到手价监控</title><style>body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;margin:24px;color:#172033}}table{{border-collapse:collapse;width:100%;font-size:14px;margin-bottom:24px}}th,td{{border:1px solid #d7dde8;padding:8px;vertical-align:top}}th{{background:#f3f6fb}}.hint{{background:#fff7ed;border:1px solid #fed7aa;padding:12px;margin:16px 0}}.ok{{color:#047857;font-weight:700}}</style></head><body><h1>羽毛球最低到手价监控</h1><p>生成时间：{generated_at}</p><div class="hint">爬虫支持通过 PROXY_SUBSCRIPTIONS 启动 mihomo 翻墙订阅代理，并在每次请求前尝试切换 GLOBAL 节点降低风控风险。自动价仍会受账号券、支付券、地区库存影响，下单前请二次确认。</div><h2>电商最低到手价</h2><table><thead><tr><th>电商渠道</th><th>羽毛球型号</th><th>球速</th><th>到手价/筒</th><th>满减/券</th><th>库存状态</th><th>库存数量</th><th>爬取时间</th><th>置信度</th><th>卖家</th><th>领券/备注</th></tr></thead><tbody>{''.join(rows)}</tbody></table><h2>爆料平台线索</h2><table><thead><tr><th>来源</th><th>线索</th><th>识别价格</th><th>代理节点</th></tr></thead><tbody>{''.join(buzz_rows)}</tbody></table><p>机器可读数据：<a href="data/results.json">data/results.json</a> / <a href="data/buzz.json">data/buzz.json</a></p></body></html>"""
 
 
 def write_outputs(records: list[dict[str, Any]], buzz_records: list[dict[str, Any]]) -> None:
