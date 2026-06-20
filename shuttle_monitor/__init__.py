@@ -1,0 +1,1 @@
+"""Shuttlecock price monitor."""
