@@ -36,7 +36,7 @@ jobs:
         run: pytest
 
       - name: Build Pages site
-        run: python -m shuttle_monitor.monitor --live --output
+        run: python -m shuttle_monitor.monitor --output
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
