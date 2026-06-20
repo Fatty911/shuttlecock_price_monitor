@@ -320,11 +320,14 @@ def lowest_per_channel_model(records: list[dict[str, Any]]) -> list[dict[str, An
     return sorted(best.values(), key=lambda r: (r["model_key"], r["effective_price"], r["channel"]))
 
 
-def build_records(config: dict[str, Any], live: bool) -> list[dict[str, Any]]:
+def build_records(config: dict[str, Any], live: bool, max_models: int | None = None) -> list[dict[str, Any]]:
     candidates: list[Candidate] = []
+    models = model_entries(config)
+    if max_models is not None:
+        models = models[:max_models]
     if live:
         for channel in config["channels"]:
-            for model in model_entries(config):
+            for model in models:
                 query = quote_plus(f"{model['brand']} {model['model']} 羽毛球")
                 url = channel["search_url"].format(query=query)
                 text, error, used_browser, node = fetch_text(url)
@@ -379,9 +382,10 @@ def main() -> None:
     parser.add_argument("--config", type=Path, default=CONFIG_PATH)
     parser.add_argument("--live", action="store_true", help="fetch ecommerce search pages; default builds baseline watchlist")
     parser.add_argument("--output", action="store_true")
+    parser.add_argument("--max-models", type=int, default=None, help="limit live crawl size for smoke tests")
     args = parser.parse_args()
     config = load_config(args.config)
-    records = build_records(config, live=args.live)
+    records = build_records(config, live=args.live, max_models=args.max_models)
     buzz_records = build_buzz_records(config, live=args.live)
     if args.output:
         write_outputs(records, buzz_records)

@@ -41,7 +41,7 @@ jobs:
         run: python custom_scripts/setup_proxy_runtime.py
 
       - name: Build Pages site
-        run: python -m shuttle_monitor.monitor --live --output
+        run: python -m shuttle_monitor.monitor --live --max-models 8 --output
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
