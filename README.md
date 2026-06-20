@@ -55,3 +55,11 @@ python -m shuttle_monitor.monitor --live --output
 - 企业微信“中羽羽球线报”：通过 `WEWORK_ZHONGYU_WIRE_JSON` 环境变量注入已收集的群消息 JSON 或逐行文本。
 
 企业微信消息建议由外部机器人/转发脚本写入 GitHub Actions Secret 或定时 artifact，再由本项目统一解析价格和关键词。
+
+## 高频分片策略
+
+淘宝、京东、拼多多价格时效性强，不能只依赖每天一次全量任务。当前工作流改为每 30 分钟运行一次，并把型号列表切成 12 个分片：
+
+- 每次只抓一个分片，减少单次请求量和 6 小时限制风险。
+- 约 6 小时覆盖一轮全型号；如果后续确认代理池足够稳定，可降低 SHARD_TOTAL 或增加单次分片规模。
+- 手动全量跑可本地执行 `python -m shuttle_monitor.monitor --live --output`。

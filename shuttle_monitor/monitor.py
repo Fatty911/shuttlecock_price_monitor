@@ -320,9 +320,11 @@ def lowest_per_channel_model(records: list[dict[str, Any]]) -> list[dict[str, An
     return sorted(best.values(), key=lambda r: (r["model_key"], r["effective_price"], r["channel"]))
 
 
-def build_records(config: dict[str, Any], live: bool, max_models: int | None = None) -> list[dict[str, Any]]:
+def build_records(config: dict[str, Any], live: bool, max_models: int | None = None, shard_index: int = 0, shard_total: int = 1) -> list[dict[str, Any]]:
     candidates: list[Candidate] = []
     models = model_entries(config)
+    if shard_total > 1:
+        models = [model for idx, model in enumerate(models) if idx % shard_total == shard_index]
     if max_models is not None:
         models = models[:max_models]
     if live:
@@ -383,9 +385,13 @@ def main() -> None:
     parser.add_argument("--live", action="store_true", help="fetch ecommerce search pages; default builds baseline watchlist")
     parser.add_argument("--output", action="store_true")
     parser.add_argument("--max-models", type=int, default=None, help="limit live crawl size for smoke tests")
+    parser.add_argument("--shard-index", type=int, default=0, help="zero-based model shard index for frequent scheduled runs")
+    parser.add_argument("--shard-total", type=int, default=1, help="total number of model shards")
     args = parser.parse_args()
     config = load_config(args.config)
-    records = build_records(config, live=args.live, max_models=args.max_models)
+    shard_total = max(1, args.shard_total)
+    shard_index = args.shard_index % shard_total
+    records = build_records(config, live=args.live, max_models=args.max_models, shard_index=shard_index, shard_total=shard_total)
     buzz_records = build_buzz_records(config, live=args.live)
     if args.output:
         write_outputs(records, buzz_records)
