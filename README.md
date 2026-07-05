@@ -62,3 +62,6 @@ python -m shuttle_monitor.monitor --live --output
 - 每次只抓一个分片，减少单次请求量和 6 小时限制风险。
 - 约 6 小时覆盖一轮全型号；如果后续确认代理池足够稳定，可降低 SHARD_TOTAL 或增加单次分片规模。
 - 手动全量跑可本地执行 `python -m shuttle_monitor.monitor --live --output`。
+
+### 2026-07-05
+- 仓库目录整理：`generate_clash_config.py` → `scripts/`
