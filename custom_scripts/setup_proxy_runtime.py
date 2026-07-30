@@ -371,20 +371,42 @@ def main() -> int:
 
     test_urls = args.test_url or DEFAULT_TEST_URLS
     if not test_local_proxy(test_urls):
-        # 输出 mihomo 日志帮助诊断
         log_content = log_path.read_text(errors="replace") if log_path.exists() else ""
         if log_content:
-            print(f"=== mihomo 日志（最后 2000 字符）===")
-            print(log_content[-2000:])
-        # 检查端口是否在监听
-        import socket
-        for port in (7890, 9090):
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            result = sock.connect_ex(("127.0.0.1", port))
-            print(f"端口 {port} 状态: {"开放" if result == 0 else "关闭"}")
-            sock.close()
+            print("=== mihomo 日志（最后 1000 字符）===")
+            print(log_content[-1000:])
         process.terminate()
-        return disable_proxy(args.github_env, "所有代理节点连通性测试失败")
+
+        # 后备：DMIT VPS HTTP 代理
+        dmit_url = os.getenv("DMIT_PROXY_URL", "")
+        if dmit_url:
+            print("尝试 DMIT 后备代理...")
+            dmit_proxies = {"http": dmit_url, "https": dmit_url}
+            for attempt in range(1, 4):
+                if attempt > 1:
+                    print(f"DMIT 后备第 {attempt}/3 轮重试...")
+                    time.sleep(3)
+                for url in test_urls:
+                    try:
+                        resp = requests.get(url, proxies=dmit_proxies, timeout=15)
+                        if 200 <= resp.status_code < 400:
+                            print(f"DMIT 后备代理连通: {url} HTTP {resp.status_code}")
+                            append_github_env(args.github_env, {
+                                "PROXY_ENABLED": "true",
+                                "PROXY_CONFIG_FILE": "",
+                                "HTTP_PROXY": dmit_url,
+                                "HTTPS_PROXY": dmit_url,
+                                "ALL_PROXY": dmit_url,
+                                "http_proxy": dmit_url,
+                                "https_proxy": dmit_url,
+                                "all_proxy": dmit_url,
+                            })
+                            return 0
+                        print(f"DMIT 后备未通过: {url} HTTP {resp.status_code}")
+                    except requests.RequestException as exc:
+                        print(f"DMIT 后备异常: {url} {exc}")
+            return disable_proxy(args.github_env, "mihomo 和 DMIT 后备代理均失败")
+        return disable_proxy(args.github_env, "所有代理节点连通性测试失败且无 DMIT 后备")
 
     append_github_env(
         args.github_env,
