@@ -478,11 +478,10 @@ class ClashConfigGenerator:
                 "enhanced-mode": "fake-ip",
                 "fake-ip-range": "198.18.0.1/16",
                 "fake-ip-filter": ["*.lan", "localhost.ptlogin2.qq.com"],
-                "nameserver": ["223.5.5.5", "119.29.29.29"],
+                "nameserver": ["8.8.8.8", "1.1.1.1", "223.5.5.5"],
                 "fallback": ["tls://8.8.8.8:853", "tls://1.1.1.1:853"],
                 "fallback-filter": {
-                    "geoip": True,
-                    "geoip-code": "CN",
+                    "geoip": False,
                     "ipcidr": ["240.0.0.0/4"],
                 },
             },
@@ -497,17 +496,17 @@ class ClashConfigGenerator:
                     "name": "BALANCE",
                     "type": "load-balance",
                     "proxies": auto_proxies,
-                    "url": "http://www.gstatic.com/generate_204",
+                    "url": "http://www.taobao.com",
                     "interval": 300,
                     "strategy": "round-robin",
                     "health-check": {
                         "enable": True,
-                        "url": "http://www.gstatic.com/generate_204",
+                        "url": "http://www.taobao.com",
                         "interval": 300,
                     },
                 },
             ],
-            "rules": ["GEOIP,LAN,DIRECT", "GEOIP,CN,DIRECT", "MATCH,PROXY"],
+            "rules": ["GEOIP,LAN,DIRECT", "MATCH,PROXY"],
         }
         return yaml.safe_dump(config, allow_unicode=True, sort_keys=False)
     
