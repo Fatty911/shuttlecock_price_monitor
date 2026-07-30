@@ -225,7 +225,7 @@ def request_markup(
             response = getter(
                 url,
                 headers={"User-Agent": "Mozilla/5.0 (compatible; honest-price-monitor/3.0)"},
-                timeout=(5, 10),
+                timeout=(10, 25),
                 proxies=proxies,
                 allow_redirects=True,
             )
@@ -439,7 +439,7 @@ def crawl_tasks(
 ) -> list[AttemptResult]:
     request_limiter = RequestLimiter(global_limit=6, per_host_limit=2)
     browser_limiter = BrowserLimiter(global_limit=2)
-    breaker = BrowserCircuitBreaker(threshold=3)
+    breaker = BrowserCircuitBreaker(threshold=10)
 
     def run(task: ProductTask) -> AttemptResult:
         return _attempt_task(
@@ -1212,7 +1212,7 @@ def browser_markup(
             browser = playwright.chromium.launch(**launch_options)
             try:
                 page = browser.new_page(locale="zh-CN")
-                response = page.goto(url, wait_until="domcontentloaded", timeout=15_000)
+                response = page.goto(url, wait_until="domcontentloaded", timeout=45_000)
                 markup = page.content()
                 final_url = page.url
                 classification = classify_markup(markup, final_url)
