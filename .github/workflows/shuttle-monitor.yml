@@ -177,6 +177,13 @@ jobs:
         with:
           name: pages-payload-${{ github.run_id }}-${{ github.run_attempt }}-${{ env.SOURCE_SHA }}
           path: deployed-site
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install dependencies
+        run: pip install -r requirements.txt
       - name: Live product gate
         run: python -m shuttle_monitor.monitor --quality-gate --site-dir deployed-site
 
