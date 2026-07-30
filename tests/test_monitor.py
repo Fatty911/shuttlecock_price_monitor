@@ -454,7 +454,7 @@ def test_cancelled_wait_does_not_leak_or_overrelease_request_semaphores():
 
 def test_browser_limits_and_three_identical_blocks_open_platform_circuit():
     limiter = BrowserLimiter(global_limit=2)
-    breaker = BrowserCircuitBreaker(threshold=10)
+    breaker = BrowserCircuitBreaker(threshold=3)
     for _ in range(2):
         assert breaker.allow("jd")
         with limiter.slot("jd"):
@@ -554,7 +554,7 @@ def test_browser_challenge_fuse_still_emits_all_platform_results():
     assert len(results) == 23
     assert len(browser_calls) == 10
     assert all(result.outcome == "blocked" for result in results)
-    assert sum(result.block_reason == "browser_circuit_open" for result in results) == 20
+    assert sum(result.block_reason == "browser_circuit_open" for result in results) == 13
 
 
 def test_partial_live_parser_success_is_same_card_and_never_uses_browser():
