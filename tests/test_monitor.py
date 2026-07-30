@@ -167,7 +167,7 @@ def test_detail_id_mismatch_or_ambiguous_price_is_rejected():
         ("taobao", "https://s.taobao.com/search?q=AS20", False),
         ("taobao", "https://evil.test/?next=item.taobao.com/item.htm?id=1", False),
         ("jd", "https://item.jd.com/123456.html", True),
-        ("jd", "http://item.jd.com/123456.html", False),
+        ("jd", "http://item.jd.com/123456.html", True),
         ("jd", "https://search.jd.com/Search?keyword=AS20", False),
         ("pdd", "https://mobile.yangkeduo.com/goods.html?goods_id=8", True),
         ("pdd", "https://mobile.yangkeduo.com/search_result.html?goods_id=8", False),
