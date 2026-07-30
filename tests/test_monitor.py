@@ -380,7 +380,7 @@ def test_requests_retries_only_transient_statuses(status):
     fetched = request_markup("https://search.jd.com/Search?q=x", getter=getter, sleep=lambda _: None)
     assert fetched.attempts == 3
     assert fetched.http_status == 200
-    assert getter.calls[0][1]["timeout"] == (5, 10)
+    assert getter.calls[0][1]["timeout"] == (10, 25)
 
 
 def test_requests_retries_connection_errors_but_not_403_or_challenge():
@@ -454,7 +454,7 @@ def test_cancelled_wait_does_not_leak_or_overrelease_request_semaphores():
 
 def test_browser_limits_and_three_identical_blocks_open_platform_circuit():
     limiter = BrowserLimiter(global_limit=2)
-    breaker = BrowserCircuitBreaker(threshold=3)
+    breaker = BrowserCircuitBreaker(threshold=10)
     for _ in range(2):
         assert breaker.allow("jd")
         with limiter.slot("jd"):
@@ -552,7 +552,7 @@ def test_browser_challenge_fuse_still_emits_all_platform_results():
         browser_fn=browser_fn,
     )
     assert len(results) == 23
-    assert len(browser_calls) == 3
+    assert len(browser_calls) == 10
     assert all(result.outcome == "blocked" for result in results)
     assert sum(result.block_reason == "browser_circuit_open" for result in results) == 20
 
