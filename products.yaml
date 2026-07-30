@@ -1,3 +1,5 @@
+config_revision: 4
+retired_task_ids: []
 channels:
   - id: taobao
     name: 淘宝/天猫
@@ -15,70 +17,63 @@ models:
   - brand: 尤尼克斯
     names: [AS05, AS20, AS30]
     speeds: ['76', '77', '78']
+    target_speed: '77'
     aliases: [YONEX, YY]
     notes: AS05 以下飞行不优先；AS40 及以上默认太贵不纳入常用清单。
   - brand: 亚狮龙
     names: [Classic, Supreme, Ultimate, '1号', '2号']
     speeds: ['76', '77', '78']
+    target_speed: '77'
     aliases: [RSL]
     notes: Ultimate 仅在比 Supreme 贵个位数时优先；2号以下和 D5 默认毛片偏薄。
   - brand: 李宁
     names: [G700, G800, C90]
     speeds: ['76', '77', '78']
+    target_speed: '77'
     aliases: [LI-NING, Lining]
     notes: G600 飞行略不满，G900 默认太贵。
   - brand: 胜利 Victor
     names: [大师3, 大师4]
     speeds: ['76', '77', '78']
+    target_speed: '77'
     aliases: [VICTOR, 胜利]
     notes: 无大师2；大师1和 ACE 默认太贵，大师5 飞行/毛片不优先。
   - brand: 澳加林
     names: [AC50]
     speeds: ['76', '77', '78']
+    target_speed: '77'
     aliases: [Aojialin]
     notes: AC30 可作备选但不进入默认重点清单。
   - brand: 华美
     names: [GT900]
     speeds: ['76', '77', '78']
+    target_speed: '77'
     aliases: [HUAMEI]
     notes: 常用国产高性价比候选。
   - brand: 骄点
     names: [经典耐打, 比赛级]
     speeds: ['76', '77', '78']
+    target_speed: '77'
     aliases: [焦点]
     notes: 国产品牌定位相近型号，需按实际店铺标题复核。
   - brand: 翎美
     names: [比赛级, 训练比赛]
     speeds: ['76', '77', '78']
+    target_speed: '77'
     aliases: []
     notes: 国产品牌定位相近型号，需按实际店铺标题复核。
   - brand: 文杰
     names: [比赛级, 稳定耐打]
     speeds: ['76', '77', '78']
+    target_speed: '77'
     aliases: []
     notes: 国产品牌定位相近型号，需按实际店铺标题复核。
   - brand: 航空
     names: [比赛1号, 比赛2号]
     speeds: ['76', '77', '78']
+    target_speed: '77'
     aliases: [航宇]
     notes: 国产品牌定位相近型号，需按实际店铺标题复核。
-discounts:
-  - channel: taobao
-    label: 跨店每满300减50示例
-    threshold: 300
-    amount: 50
-    stackable: true
-  - channel: jd
-    label: 每满300减50示例
-    threshold: 300
-    amount: 50
-    stackable: true
-  - channel: pdd
-    label: 满200减30示例
-    threshold: 200
-    amount: 30
-    stackable: true
-
 buzz_sources:
   - id: smzdm
     name: 什么值得买羽毛球爆料

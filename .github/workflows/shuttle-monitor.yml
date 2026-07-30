@@ -4,56 +4,261 @@ on:
   workflow_dispatch:
   schedule:
     - cron: '*/30 * * * *'
-
-permissions:
-  contents: read
-  pages: write
-  id-token: write
+  workflow_run:
+    workflows: ['CI']
+    types: [completed]
+    branches: [main]
 
 concurrency:
-  group: pages
+  group: shuttlecock-live-round
   cancel-in-progress: false
 
+env:
+  SOURCE_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+
 jobs:
-  monitor:
+  build:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+      attestations: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ env.SOURCE_SHA }}
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.12'
+          cache: pip
+          cache-dependency-path: requirements.txt
 
-      - name: Install dependencies
+      - name: Install locked dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          python -m pip install --disable-pip-version-check -r requirements.txt
           playwright install --with-deps chromium
 
-      - name: Run tests
-        run: pytest
+      - name: Offline contract tests
+        run: |
+          python -m pytest -q
+          python -m compileall -q shuttle_monitor scripts custom_scripts
 
-      - name: Setup rotating proxy
+      - name: Restore prior state
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          CONFIG_SHA=$(sha256sum products.yaml | cut -d' ' -f1)
+          python scripts/restore_state.py \
+            --repo "${{ github.repository }}" \
+            --branch main \
+            --current-run-id "${{ github.run_id }}" \
+            --config-sha256 "$CONFIG_SHA" \
+            --destination state
+
+      - name: Setup fixed proxy runtime
         env:
           PROXY_SUBSCRIPTIONS: ${{ secrets.PROXY_SUBSCRIPTIONS }}
         run: python custom_scripts/setup_proxy_runtime.py
 
-      - name: Build Pages site
-        run: |
-          SHARD_TOTAL=12
-          SHARD_INDEX=$((GITHUB_RUN_NUMBER % SHARD_TOTAL))
-          python -m shuttle_monitor.monitor --live --shard-total "$SHARD_TOTAL" --shard-index "$SHARD_INDEX" --output
+      - name: Build complete live round
+        run: python -m shuttle_monitor.monitor --live --output
 
-      - name: Setup Pages
+      - name: Upload early raw evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: raw-evidence-${{ github.run_id }}-${{ github.run_attempt }}-${{ env.SOURCE_SHA }}
+          path: site/data/live-evidence.json
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Upload early state
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: state-${{ github.run_id }}-${{ github.run_attempt }}-${{ env.SOURCE_SHA }}
+          path: state
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Structural publish gate
+        run: python -m shuttle_monitor.monitor --structure-gate
+
+      - name: Upload audit evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: audit-${{ github.run_id }}-${{ github.run_attempt }}-${{ env.SOURCE_SHA }}
+          path: |
+            site/audit.json
+            site/manifest.json
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Upload precise public payload
+        uses: actions/upload-artifact@v4
+        with:
+          name: pages-payload-${{ github.run_id }}-${{ github.run_attempt }}-${{ env.SOURCE_SHA }}
+          path: site
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Attest public manifest
+        uses: actions/attest@v4
+        with:
+          subject-path: site/manifest.json
+
+      - name: Configure Pages
         uses: actions/configure-pages@v5
 
       - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v4
         with:
           path: site
 
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    outputs:
+      page_url: ${{ steps.deployment.outputs.page_url }}
+    steps:
       - name: Deploy to GitHub Pages
+        id: deployment
         uses: actions/deploy-pages@v4
+
+  post_verify:
+    needs: deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+      - name: Download precise public payload
+        uses: actions/download-artifact@v5
+        with:
+          name: pages-payload-${{ github.run_id }}-${{ github.run_attempt }}-${{ env.SOURCE_SHA }}
+          path: expected-site
+      - name: Verify deployed TLS manifest and files
+        run: python scripts/post_deploy_verify.py --base-url "${{ needs.deploy.outputs.page_url }}" --expected expected-site/manifest.json
+
+  product_gate:
+    needs: post_verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+      - name: Download precise public payload
+        uses: actions/download-artifact@v5
+        with:
+          name: pages-payload-${{ github.run_id }}-${{ github.run_attempt }}-${{ env.SOURCE_SHA }}
+          path: deployed-site
+      - name: Live product gate
+        run: python -m shuttle_monitor.monitor --quality-gate --site-dir deployed-site
+
+  alert:
+    if: always()
+    needs: [build, post_verify, product_gate]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+      issues: write
+    steps:
+      - name: Download deterministic audit
+        continue-on-error: true
+        uses: actions/download-artifact@v5
+        with:
+          name: audit-${{ github.run_id }}-${{ github.run_attempt }}-${{ env.SOURCE_SHA }}
+          path: alert-audit
+      - name: Create or update fingerprint alert
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUILD_RESULT: ${{ needs.build.result }}
+          POST_VERIFY_RESULT: ${{ needs.post_verify.result }}
+          PRODUCT_GATE_RESULT: ${{ needs.product_gate.result }}
+        run: |
+          if test -f alert-audit/audit.json; then
+            fingerprint=$(python -c 'import json; print(json.load(open("alert-audit/audit.json"))["fingerprint"])')
+          else
+            fingerprint=$(printf '%s' "$BUILD_RESULT:$POST_VERIFY_RESULT:$PRODUCT_GATE_RESULT" | sha256sum | cut -d' ' -f1)
+          fi
+          title="monitor-blocked:$fingerprint"
+          run_url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          if test "$BUILD_RESULT:$POST_VERIFY_RESULT:$PRODUCT_GATE_RESULT" = "success:success:success"; then
+            gh issue list --repo "${{ github.repository }}" --state open --search "monitor-blocked in:title" --json number --jq '.[].number' |
+              while read -r number; do
+                gh issue close "$number" --repo "${{ github.repository }}" --comment "Recovered in $run_url."
+              done
+          else
+            number=$(gh issue list --repo "${{ github.repository }}" --state open --search "$title in:title" --json number --jq '.[0].number // empty')
+            body="Live monitor blocked. run=$run_url source_sha=${{ env.SOURCE_SHA }}. No completion claim or Release was made."
+            if test -n "$number"; then
+              gh issue comment "$number" --repo "${{ github.repository }}" --body "$body"
+            else
+              gh issue create --repo "${{ github.repository }}" --title "$title" --body "$body"
+            fi
+          fi
+
+  release:
+    needs: product_gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - name: Download precise public payload
+        uses: actions/download-artifact@v5
+        with:
+          name: pages-payload-${{ github.run_id }}-${{ github.run_attempt }}-${{ env.SOURCE_SHA }}
+          path: release-site
+      - name: Select one qualified daily Release
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="shuttle-$(date -u +%Y%m%d)"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          if gh release view "$tag" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            echo "create=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "create=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Create qualified public Release
+        if: steps.release.outputs.create == 'true'
+        uses: softprops/action-gh-release@master
+        with:
+          tag_name: ${{ steps.release.outputs.tag }}
+          target_commitish: ${{ env.SOURCE_SHA }}
+          files: |
+            release-site/manifest.json
+            release-site/audit.json
+            release-site/data/status.json
+            release-site/data/prices.json
+            release-site/data/summary.json

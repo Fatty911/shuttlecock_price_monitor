@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+set -euo pipefail
+python3 -m pytest -q
+python3 -m compileall -q shuttle_monitor scripts custom_scripts
+python3 scripts/codex_delivery_gate.py verify-commit
+git push origin HEAD:main
+python3 scripts/codex_delivery_gate.py verify

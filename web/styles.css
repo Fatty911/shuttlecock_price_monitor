@@ -1,0 +1,19 @@
+:root { color-scheme: light; font-family: system-ui, sans-serif; }
+body { margin: 0; background: #f7f8fb; color: #172033; }
+header, main, .filters, #state { max-width: 1180px; margin: 0 auto; padding: 16px; }
+#state { font-weight: 700; background: #fff3cd; }
+.filters { position: sticky; top: 0; z-index: 2; display: flex; gap: 12px; background: #fff; }
+label { display: grid; gap: 4px; }
+select, input, button, a { min-height: 44px; }
+table { width: 100%; border-collapse: collapse; background: white; }
+th, td { padding: 10px; border-bottom: 1px solid #dfe3ea; text-align: left; }
+.cards { display: none; gap: 12px; }
+article { background: white; padding: 14px; border-radius: 10px; }
+.history-panel { margin-top: 20px; background: white; padding: 14px; }
+.history-pager { display: flex; gap: 12px; align-items: center; }
+@media (max-width: 720px) {
+  .filters { flex-wrap: wrap; }
+  .cards { display: grid; }
+  .table-wrap { overflow-x: auto; }
+  table { min-width: 760px; }
+}

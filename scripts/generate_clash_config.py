@@ -5,6 +5,7 @@ import os
 import json
 import base64
 import requests
+import yaml
 import time
 from typing import List, Dict, Optional
 from urllib.parse import urlparse, parse_qs
@@ -62,8 +63,8 @@ class ClashConfigGenerator:
                     return content
             print(f"获取订阅失败: {redact_url(url)} HTTP {resp.status_code}")
             return ""
-        except Exception as e:
-            print(f"获取订阅失败: {redact_url(url)} {e}")
+        except Exception as exc:
+            print(f"获取订阅失败: {redact_url(url)} {type(exc).__name__}")
             return ""
     
     def parse_vmess(self, link: str) -> Optional[Dict]:
@@ -460,83 +461,55 @@ class ClashConfigGenerator:
         if not all_proxies:
             print("警告: 没有可用代理节点，将直连")
         
-        proxy_names = [p['name'] for p in all_proxies]
-        
-        # AUTO组的代理列表，如果没有节点则使用DIRECT
-        auto_proxies = proxy_names if proxy_names else ['DIRECT']
-        
-        config = f"""# Clash配置 - 自动生成
-# 生成时间: {time.strftime('%Y-%m-%d %H:%M:%S')}
-# 节点数量: {len(all_proxies)}
-
-mixed-port: {mixed_port}
-socks-port: {socks_port}
-allow-lan: false
-bind-address: "127.0.0.1"
-mode: rule
-log-level: info
-ipv6: false
-external-controller: {external_controller}
-
-dns:
-  enable: true
-  ipv6: false
-  enhanced-mode: fake-ip
-  fake-ip-range: 198.18.0.1/16
-  fake-ip-filter:
-    - '*.lan'
-    - localhost.ptlogin2.qq.com
-    - '+.srv.nintendo.net'
-    - '+.stun.playstation.net'
-    - '+.msftconnecttest.com'
-    - '+.msftncsi.com'
-    - '+.xboxlive.com'
-  nameserver:
-    - 223.5.5.5
-    - 119.29.29.29
-  fallback:
-    - tls://8.8.8.8:853
-    - tls://1.1.1.1:853
-  fallback-filter:
-    geoip: true
-    geoip-code: CN
-    ipcidr:
-      - 240.0.0.0/4
-
-proxies:
-"""
-        
-        for proxy in all_proxies:
-            config += self._proxy_to_yaml(proxy)
-        
-        config += f"""
-proxy-groups:
-  - name: "PROXY"
-    type: select
-    proxies:
-      - BALANCE
-      - DIRECT
-{self._format_proxy_list(proxy_names, 6)}
-
-  - name: "BALANCE"
-    type: load-balance
-    proxies:
-{self._format_proxy_list(auto_proxies, 6)}
-    url: 'http://www.gstatic.com/generate_204'
-    interval: 300
-    strategy: round-robin
-    health-check:
-      enable: true
-      url: 'http://www.gstatic.com/generate_204'
-      interval: 300
-
-rules:
-  - GEOIP,LAN,DIRECT
-  - GEOIP,CN,DIRECT
-  - MATCH,PROXY
-"""
-        
-        return config
+        proxy_names = [str(proxy["name"]) for proxy in all_proxies]
+        auto_proxies = proxy_names if proxy_names else ["DIRECT"]
+        config = {
+            "mixed-port": mixed_port,
+            "socks-port": socks_port,
+            "allow-lan": False,
+            "bind-address": "127.0.0.1",
+            "mode": "rule",
+            "log-level": "silent",
+            "ipv6": False,
+            "external-controller": external_controller,
+            "dns": {
+                "enable": True,
+                "ipv6": False,
+                "enhanced-mode": "fake-ip",
+                "fake-ip-range": "198.18.0.1/16",
+                "fake-ip-filter": ["*.lan", "localhost.ptlogin2.qq.com"],
+                "nameserver": ["223.5.5.5", "119.29.29.29"],
+                "fallback": ["tls://8.8.8.8:853", "tls://1.1.1.1:853"],
+                "fallback-filter": {
+                    "geoip": True,
+                    "geoip-code": "CN",
+                    "ipcidr": ["240.0.0.0/4"],
+                },
+            },
+            "proxies": all_proxies,
+            "proxy-groups": [
+                {
+                    "name": "PROXY",
+                    "type": "select",
+                    "proxies": ["BALANCE", "DIRECT", *proxy_names],
+                },
+                {
+                    "name": "BALANCE",
+                    "type": "load-balance",
+                    "proxies": auto_proxies,
+                    "url": "http://www.gstatic.com/generate_204",
+                    "interval": 300,
+                    "strategy": "round-robin",
+                    "health-check": {
+                        "enable": True,
+                        "url": "http://www.gstatic.com/generate_204",
+                        "interval": 300,
+                    },
+                },
+            ],
+            "rules": ["GEOIP,LAN,DIRECT", "GEOIP,CN,DIRECT", "MATCH,PROXY"],
+        }
+        return yaml.safe_dump(config, allow_unicode=True, sort_keys=False)
     
     def _proxy_to_yaml(self, proxy: Dict, indent: int = 2) -> str:
         """将代理配置转为YAML格式"""
@@ -577,6 +550,7 @@ rules:
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, 'w', encoding='utf-8') as f:
             f.write(config)
+        os.chmod(path, 0o600)
         print(f"配置已保存到: {path}")
     
     def generate_and_save(self, subscriptions: List[str], exclude_keywords: List[str] = None,

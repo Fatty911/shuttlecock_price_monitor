@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import gzip
+import hashlib
 import json
 import os
 import re
@@ -30,7 +31,13 @@ if str(SCRIPTS_DIR) not in sys.path:
 from generate_clash_config import ClashConfigGenerator, redact_url
 
 
-MIHOMO_API = "https://api.github.com/repos/MetaCubeX/mihomo/releases/latest"
+MIHOMO_VERSION = "v1.19.29"
+MIHOMO_ASSET_NAME = "mihomo-linux-amd64-compatible-v1.19.29.gz"
+MIHOMO_ASSET_URL = (
+    f"https://github.com/MetaCubeX/mihomo/releases/download/{MIHOMO_VERSION}/"
+    f"{MIHOMO_ASSET_NAME}"
+)
+MIHOMO_ASSET_SHA256 = "5612e698e96c8b8ad15abc4c0a4f098eba9234354b4f248cb97f2528e215b094"
 DEFAULT_TEST_URLS = [
     "http://www.gstatic.com/generate_204",
     "https://www.google.com/generate_204",
@@ -89,7 +96,7 @@ def parse_proxy_secret(raw: str) -> tuple[list[str], list[str]]:
     for url in subscriptions:
         parsed = urlparse(url)
         if parsed.scheme not in {"http", "https"} or not parsed.netloc:
-            print(f"跳过无效订阅地址: {url[:20]}***")
+            print("跳过一个无效订阅地址")
             continue
         if url in seen:
             continue
@@ -135,24 +142,26 @@ def choose_mihomo_asset(release: dict[str, Any]) -> str | None:
     return candidates[0][2]
 
 
+def verify_mihomo_archive(compressed: bytes) -> bytes:
+    digest = hashlib.sha256(compressed).hexdigest()
+    if digest != MIHOMO_ASSET_SHA256:
+        raise ValueError("mihomo archive checksum mismatch")
+    return gzip.decompress(compressed)
+
+
 def download_mihomo(bin_dir: Path) -> Path | None:
     bin_dir.mkdir(parents=True, exist_ok=True)
     target = bin_dir / "mihomo"
 
     try:
-        print("下载 mihomo 最新 Linux amd64 运行文件...")
-        req = urllib.request.Request(MIHOMO_API, headers={"User-Agent": "shuttlecock-price-monitor-actions"})
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            release = json.loads(resp.read().decode("utf-8"))
-        asset_url = choose_mihomo_asset(release)
-        if not asset_url:
-            print("未找到可用的 mihomo linux-amd64 gz 资产")
-            return None
-
-        req = urllib.request.Request(asset_url, headers={"User-Agent": "shuttlecock-price-monitor-actions"})
+        print(f"下载固定版本 mihomo {MIHOMO_VERSION} Linux amd64-compatible...")
+        req = urllib.request.Request(
+            MIHOMO_ASSET_URL,
+            headers={"User-Agent": "shuttlecock-price-monitor-actions"},
+        )
         with urllib.request.urlopen(req, timeout=120) as resp:
             compressed = resp.read()
-        binary = gzip.decompress(compressed)
+        binary = verify_mihomo_archive(compressed)
         target.write_bytes(binary)
         target.chmod(target.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
         print(f"mihomo 已准备: {target}")
@@ -185,8 +194,7 @@ def write_runtime_files(proxy_config: Path, clash_config: Path,
     proxy_config.write_text(
         json.dumps(
             {
-                "subscriptions": subscriptions,
-                "exclude_keywords": exclude_keywords,
+                "exclude_keywords": [],
                 "node_count": len(proxies),
                 "proxies": [],
                 "stats": {},
@@ -196,10 +204,12 @@ def write_runtime_files(proxy_config: Path, clash_config: Path,
         ),
         encoding="utf-8",
     )
+    proxy_config.chmod(0o600)
 
     generator = ClashConfigGenerator(str(clash_config))
     config = generator.generate_config_from_proxies(proxies)
     generator.save_config(config, str(clash_config))
+    clash_config.chmod(0o600)
 
 
 def wait_for_controller(timeout: int = 15) -> bool:

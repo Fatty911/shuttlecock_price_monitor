@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>羽毛球价格监控</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header>
+    <h1>羽毛球价格监控</h1>
+    <p id="batch-summary">正在读取本轮批次…</p>
+  </header>
+  <section id="state" data-state="loading" aria-live="polite">loading</section>
+  <section class="filters" aria-label="筛选">
+    <label>平台<select id="platform-filter"><option value="">全部</option></select></label>
+    <label>品牌<select id="brand-filter"><option value="">全部</option></select></label>
+    <label>状态<select id="outcome-filter"><option value="">全部</option></select></label>
+    <label>新鲜度<select id="freshness-filter"><option value="">全部</option><option value="fresh">本轮价格</option><option value="stale">仅历史</option><option value="none">无价格</option></select></label>
+    <label>型号<input id="model-filter" type="search" placeholder="品牌或型号"></label>
+    <label>排序<select id="sort-order"><option value="updated">更新时间</option><option value="price">当前真实价</option></select></label>
+  </section>
+  <main>
+    <div id="cards" class="cards"></div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>平台</th><th>型号</th><th>状态</th><th>价格</th><th>原因</th><th>时间</th></tr></thead>
+        <tbody id="status-body"></tbody>
+      </table>
+    </div>
+    <section class="history-panel" aria-label="历史">
+      <button id="history-load" type="button">按需加载历史</button>
+      <ol id="history-list"></ol>
+      <div class="history-pager">
+        <button id="history-prev" type="button" disabled>上一页</button>
+        <span id="history-page">未加载</span>
+        <button id="history-next" type="button" disabled>下一页</button>
+      </div>
+    </section>
+  </main>
+  <script src="app.js" defer></script>
+</body>
+</html>
