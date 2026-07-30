@@ -39,8 +39,9 @@ MIHOMO_ASSET_URL = (
 )
 MIHOMO_ASSET_SHA256 = "5612e698e96c8b8ad15abc4c0a4f098eba9234354b4f248cb97f2528e215b094"
 DEFAULT_TEST_URLS = [
-    "http://www.gstatic.com/generate_204",
-    "https://www.google.com/generate_204",
+    "https://www.taobao.com",
+    "https://www.jd.com",
+    "https://mobile.yangkeduo.com",
 ]
 
 
@@ -226,20 +227,24 @@ def wait_for_controller(timeout: int = 15) -> bool:
     return False
 
 
-def test_local_proxy(urls: list[str]) -> bool:
+def test_local_proxy(urls: list[str], retries: int = 3, delay: float = 5.0) -> bool:
     local_proxy = {
         "http": "http://127.0.0.1:7890",
         "https": "http://127.0.0.1:7890",
     }
-    for url in urls:
-        try:
-            resp = requests.get(url, proxies=local_proxy, timeout=12)
-            if 200 <= resp.status_code < 400:
-                print(f"代理连通性测试通过: {url} HTTP {resp.status_code}")
-                return True
-            print(f"代理连通性测试未通过: {url} HTTP {resp.status_code}")
-        except requests.RequestException as exc:
-            print(f"代理连通性测试异常: {url} {exc}")
+    for attempt in range(1, retries + 1):
+        if attempt > 1:
+            print(f"代理连通性第 {attempt}/{retries} 轮重试，等待 {delay}s...")
+            time.sleep(delay)
+        for url in urls:
+            try:
+                resp = requests.get(url, proxies=local_proxy, timeout=15)
+                if 200 <= resp.status_code < 400:
+                    print(f"代理连通性测试通过: {url} HTTP {resp.status_code}")
+                    return True
+                print(f"代理连通性测试未通过: {url} HTTP {resp.status_code}")
+            except requests.RequestException as exc:
+                print(f"代理连通性测试异常: {url} {exc}")
     return False
 
 
@@ -301,6 +306,10 @@ def main() -> int:
     if not wait_for_controller():
         process.terminate()
         return disable_proxy(args.github_env, "mihomo 控制端口未就绪")
+
+    # 等待节点连接建立（mihomo 控制端口就绪不代表代理节点已连通）
+    print("等待代理节点连接建立...")
+    time.sleep(8)
 
     test_urls = args.test_url or DEFAULT_TEST_URLS
     if not test_local_proxy(test_urls):
