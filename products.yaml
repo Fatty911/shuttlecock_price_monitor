@@ -3,11 +3,11 @@ retired_task_ids: []
 channels:
   - id: taobao
     name: 淘宝/天猫
-    search_url: https://s.taobao.com/search?q={query}
+    search_url: https://s.m.taobao.com/h5?q={query}
     cart_discount_note: 重点核对跨店满减、店铺券、88VIP、淘金币和直播间券；页面自动抓取不到的券会标为需人工确认。
   - id: jd
     name: 京东
-    search_url: https://search.jd.com/Search?keyword={query}
+    search_url: https://so.m.jd.com/ware/search.action?keyword={query}
     cart_discount_note: 重点核对满减、京券/东券、Plus 会员券、店铺券和支付券。
   - id: pdd
     name: 拼多多

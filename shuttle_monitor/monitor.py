@@ -224,7 +224,13 @@ def request_markup(
         try:
             response = getter(
                 url,
-                headers={"User-Agent": "Mozilla/5.0 (compatible; honest-price-monitor/3.0)"},
+                headers={
+                    "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1",
+                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                    "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+                    "Accept-Encoding": "gzip, deflate",
+                    "Connection": "keep-alive",
+                },
                 timeout=(10, 25),
                 proxies=proxies,
                 allow_redirects=True,
@@ -928,19 +934,25 @@ def is_official_product_url(platform: str, url: str) -> bool:
     host = (parsed.hostname or "").lower()
     path = parsed.path
     query = parse_qs(parsed.query)
-    if parsed.scheme != "https":
+    if parsed.scheme not in ("https", "http"):
         return False
     if platform == "taobao":
         return (
-            (host == "item.taobao.com" and path == "/item.htm" and bool(query.get("id")))
+            (host in ("item.taobao.com", "h5.m.taobao.com", "m.taobao.com")
+             and path in ("/item.htm", "/awp/core/detail.htm")
+             and bool(query.get("id")))
             or (host == "detail.tmall.com" and path == "/item.htm" and bool(query.get("id")))
+            or (host == "detail.m.tmall.com" and path == "/item.htm" and bool(query.get("id")))
         )
     if platform == "jd":
-        return host == "item.jd.com" and re.fullmatch(r"/[1-9]\d*\.html", path) is not None
+        return (
+            (host == "item.jd.com" and re.fullmatch(r"/[1-9]\d*\.html", path) is not None)
+            or (host == "item.m.jd.com" and re.fullmatch(r"/product/[1-9]\d*\.html", path) is not None)
+        )
     if platform == "pdd":
         return (
-            host in {"mobile.yangkeduo.com", "www.pinduoduo.com"}
-            and path in {"/goods.html", "/goods"}
+            host in ("mobile.yangkeduo.com", "www.pinduoduo.com", "yangkeduo.com")
+            and path in ("/goods.html", "/goods", "/goods2.html")
             and bool(query.get("goods_id"))
         )
     return False
