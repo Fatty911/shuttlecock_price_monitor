@@ -320,7 +320,10 @@ def main() -> int:
             proxies_data = groups_resp.json().get("proxies", {})
             for gname in ("PROXY", "BALANCE"):
                 ginfo = proxies_data.get(gname, {})
-                print(f"代理组 {gname}: type={ginfo.get(type,?)}, now={ginfo.get(now,?)}, 节点数={len(ginfo.get(all,[]))}")
+                gtype = ginfo.get("type", "?")
+                gnow = ginfo.get("now", "?")
+                gcount = len(ginfo.get("all", []))
+                print(f"代理组 {gname}: type={gtype}, now={gnow}, 节点数={gcount}")
             # 排除所有内部/组节点，只留真实代理
             INTERNAL = {"Selector","URLTest","Fallback","LoadBalance","Direct","Reject",
                         "GLOBAL","PASS","COMPATIBLE","REJECT","REJECT-DROP","PASS-RULE"}
@@ -338,8 +341,10 @@ def main() -> int:
             for node_name, info in leaf_nodes:
                 node_type = info.get("type", "?")
                 try:
+                    encoded_name = requests.utils.quote(node_name, safe="")
+                    delay_url = f"http://127.0.0.1:9090/proxies/{encoded_name}/delay"
                     delay_resp = ctrl.get(
-                        f"http://127.0.0.1:9090/proxies/{requests.utils.quote(node_name, safe=)}/delay",
+                        delay_url,
                         params={"url": "http://www.taobao.com", "timeout": "8000"},
                         timeout=12,
                     )
