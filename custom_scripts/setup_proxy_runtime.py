@@ -39,9 +39,9 @@ MIHOMO_ASSET_URL = (
 )
 MIHOMO_ASSET_SHA256 = "5612e698e96c8b8ad15abc4c0a4f098eba9234354b4f248cb97f2528e215b094"
 DEFAULT_TEST_URLS = [
+    "http://www.taobao.com",
+    "http://www.jd.com",
     "https://www.taobao.com",
-    "https://www.jd.com",
-    "https://mobile.yangkeduo.com",
 ]
 
 
@@ -313,6 +313,18 @@ def main() -> int:
 
     test_urls = args.test_url or DEFAULT_TEST_URLS
     if not test_local_proxy(test_urls):
+        # 输出 mihomo 日志帮助诊断
+        log_content = log_path.read_text(errors="replace") if log_path.exists() else ""
+        if log_content:
+            print(f"=== mihomo 日志（最后 2000 字符）===")
+            print(log_content[-2000:])
+        # 检查端口是否在监听
+        import socket
+        for port in (7890, 9090):
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            result = sock.connect_ex(("127.0.0.1", port))
+            print(f"端口 {port} 状态: {"开放" if result == 0 else "关闭"}")
+            sock.close()
         process.terminate()
         return disable_proxy(args.github_env, "所有代理节点连通性测试失败")
 
