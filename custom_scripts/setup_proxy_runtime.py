@@ -309,7 +309,48 @@ def main() -> int:
 
     # 等待节点连接建立（mihomo 控制端口就绪不代表代理节点已连通）
     print("等待代理节点连接建立...")
-    time.sleep(8)
+    time.sleep(10)
+
+    # 通过控制 API 诊断代理组状态
+    try:
+        ctrl = requests.Session()
+        ctrl.trust_env = False
+        groups_resp = ctrl.get("http://127.0.0.1:9090/proxies", timeout=5)
+        if groups_resp.status_code == 200:
+            proxies_data = groups_resp.json().get("proxies", {})
+            for gname in ("PROXY", "BALANCE"):
+                ginfo = proxies_data.get(gname, {})
+                gtype = ginfo.get("type", "?")
+                now = ginfo.get("now", "?")
+                all_nodes = ginfo.get("all", [])
+                print(f"代理组 {gname}: type={gtype}, now={now}, 节点数={len(all_nodes)}")
+            # 测试前5个叶子节点延迟
+            leaf_nodes = [n for n, info in proxies_data.items()
+                          if info.get("type") not in ("Selector", "URLTest", "Fallback",
+                                                       "LoadBalance", "Direct", "Reject", "GLOBAL", "PASS")]
+            print(f"叶子节点总数: {len(leaf_nodes)}")
+            tested = 0
+            for node_name in leaf_nodes[:5]:
+                try:
+                    delay_resp = ctrl.get(
+                        f"http://127.0.0.1:9090/proxies/{requests.utils.quote(node_name, safe="")}/delay",
+                        params={"url": "http://www.taobao.com", "timeout": "8000"},
+                        timeout=12,
+                    )
+                    if delay_resp.status_code == 200:
+                        delay = delay_resp.json().get("delay", "?")
+                        print(f"  节点延迟测试: {node_name[:40]}... delay={delay}ms")
+                    else:
+                        print(f"  节点延迟测试失败: {node_name[:40]}... HTTP {delay_resp.status_code}")
+                except Exception as exc:
+                    print(f"  节点延迟测试异常: {node_name[:40]}... {exc}")
+                tested += 1
+            if tested == 0:
+                print("  无可测试的叶子节点")
+        else:
+            print(f"控制 API /proxies 返回 HTTP {groups_resp.status_code}")
+    except Exception as exc:
+        print(f"代理组诊断异常: {exc}")
 
     test_urls = args.test_url or DEFAULT_TEST_URLS
     if not test_local_proxy(test_urls):
