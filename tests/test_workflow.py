@@ -51,6 +51,10 @@ def test_build_restores_state_tests_early_artifacts_then_structural_gate_and_pag
     assert "--live --output" in raw
     assert 'title="monitor-blocked:$fingerprint"' in raw
     assert "gh issue close" in raw
+    configure = next(
+        step for step in steps if step.get("name", "").startswith("Configure Pages")
+    )
+    assert configure["continue-on-error"] is True
 
 
 def test_action_refs_follow_official_major_and_maintained_third_party_allowlist():

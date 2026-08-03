@@ -115,7 +115,8 @@ jobs:
         with:
           subject-path: site/manifest.json
 
-      - name: Configure Pages
+      - name: Configure Pages (best effort; deployment remains the hard gate)
+        continue-on-error: true
         uses: actions/configure-pages@v5
 
       - name: Upload Pages artifact
