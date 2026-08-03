@@ -9,3 +9,13 @@
 - 保留现有 git author；禁止修改 `user.name`/`user.email`。只允许非 force `git push origin HEAD:main`，禁止 `--force`、`--no-verify` 和绕过评审/测试。
 - 提交前运行全套 pytest、compileall、YAML/schema/workflow/安全/XSS/敏感扫描与 `git diff --check`。提交后 hook 必须核对远端 SHA；CI、live workflow、TLS Pages manifest 和产品门未全部一致前不得宣称完成。
 - 两位最终审查者必须审查同一个 staged diff SHA-256。提交信息必须带 `Review-Model-Family-1/2`、两个 `Review-Result-1/2: PASS` 和匹配的 `Reviewed-Diff-SHA256` trailers；repo 内 gate 会在 push 前验证家族不同、2/2 PASS、diff 摘要和授权路径。
+
+
+## Git 提交作者身份规则（Fatty911 全局要求，2026-08-04）
+
+本仓库所有 Git 提交必须遵守以下作者命名规则：
+
+1. **全局兜底身份**：`Fatty911 <xuerui911@gmail.com>`。禁止使用 `bot@users.noreply.github.com` 邮箱（该邮箱关联 GitHub 用户名 `bot`，网页端会显示纯 `bot`）。
+2. **Agent 工具显式提交**：使用动态格式 `<实际工具名>-<实际模型>`（工具名 = 实际执行提交的 Agent 工具，如 hermes-agent / codex / opencode / openclaw / mimocode / qoder；模型名 = 本次实际处理会话的模型，去掉句点），例如 `opencode-kimi-k3`、`hermes-agent-glm5.2`、`codex-gpt5.5`。
+3. 禁止纯 `bot` 名称或系统 bot 身份冒充源码/文档提交；`github-actions[bot]` 仅限数据/进度自动提交。
+4. 邮箱一律使用 `xuerui911@gmail.com`。
