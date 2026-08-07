@@ -836,3 +836,44 @@ def test_canary_probe_skips_browser_for_connection_failures(monkeypatch):
     results, canaries, stats = mon.run_live_round(tasks)
     assert browser_calls == [], f"browser must not run for connection failures, got {len(browser_calls)}"
     assert len(results) == 69
+
+
+def test_canary_browser_render_is_throttled_per_platform(monkeypatch):
+    """同一平台浏览器渲染受 RENDER_LIMIT 节流：超过后不再触发渲染。"""
+    import os
+    from shuttle_monitor import monitor as mon
+    tasks = build_tasks(load_config())
+    monkeypatch.setenv("PROXY_ENABLED", "true")
+    browser_calls = []
+
+    class FakeController:
+        def __init__(self):
+            self.nodes = [f"node-{i}" for i in range(20)]
+        def switch(self, node):
+            pass
+
+    monkeypatch.setattr(mon, "ClashProxyController", FakeController)
+
+    def fake_request_markup(url, *args, **kwargs):
+        return FetchResult("<html>js shell</html>", "success", 200, url, None, 1, 5)
+
+    def fake_browser_markup(url, platform, proxy_server=None):
+        browser_calls.append((platform, url))
+        return FetchResult("<html>still shell</html>", "success", 200, url, None, 1, 5)
+
+    def fake_parse_cards(markup, task):
+        return []
+
+    monkeypatch.setattr(mon, "request_markup", fake_request_markup)
+    monkeypatch.setattr(mon, "browser_markup", fake_browser_markup)
+    monkeypatch.setattr(mon, "parse_product_cards", fake_parse_cards)
+
+    results, canaries, stats = mon.run_live_round(tasks)
+    # 每平台渲染 ≤ RENDER_LIMIT，总渲染 ≤ 3 × RENDER_LIMIT
+    assert len(browser_calls) <= 3 * mon.RENDER_LIMIT, f"got {len(browser_calls)} renders"
+    per_platform = {}
+    for platform, _url in browser_calls:
+        per_platform[platform] = per_platform.get(platform, 0) + 1
+    assert all(count <= mon.RENDER_LIMIT for count in per_platform.values()), per_platform
+    # 三个平台都应有探测机会（预算独立分片）
+    assert all(s["tested"] > 0 for s in stats.values()), stats

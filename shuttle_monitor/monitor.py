@@ -43,6 +43,9 @@ STATE_DIR = ROOT / "state"
 WEB_DIR = ROOT / "web"
 CLASH_API = os.getenv("CLASH_API", "http://127.0.0.1:9090")
 LOCAL_HTTP_PROXY = os.getenv("SHUTTLE_HTTP_PROXY", "http://127.0.0.1:7890")
+# 平台级代理探测的浏览器渲染节流：同一平台最多渲染 RENDER_LIMIT 次。
+# 全部节点出口被平台风控时，继续换节点渲染无意义且烧预算（45s/次）。
+RENDER_LIMIT = 5
 SOLD_OUT_WORDS = ("售罄", "已抢光", "无货", "缺货", "补货中", "下架")
 IN_STOCK_WORDS = ("立即购买", "加入购物车", "有货", "现货", "领券", "券后", "满减")
 BLOCK_WORDS = (
@@ -1365,9 +1368,14 @@ def run_live_round(
         selected: str | None = None
         selected_probe: tuple[ProductTask, FetchResult] | None = None
         stats = {"tested": 0, "selected": False, "budget_exhausted": False}
-        remaining = max(0.0, 600 - (time.monotonic() - selection_started))
+        # 预算按平台分配：三平台各 200s 独立分片（共 600s），
+        # 避免首个平台耗尽全局预算后其它平台零机会。
+        remaining = 200.0
         if controller is not None and remaining > 0:
             last_fetch: list[tuple[ProductTask, FetchResult] | None] = [None]
+            # 浏览器渲染节流：同一平台最多尝试 RENDER_LIMIT 次渲染。
+            # 全部节点出口被风控时，继续换节点渲染无意义且烧预算。
+            render_remaining: list[int] = [RENDER_LIMIT]
 
             def probe(_: str, node: str, timeout: float) -> bool:
                 del timeout
@@ -1388,9 +1396,14 @@ def run_live_round(
                             probe_method[0] = "requests-proxy"
                             return True
                         # JS 壳：requests 可达但无商品卡（200/403/None 状态）时，
-                        # 用浏览器渲染搜索页（走代理出口）再解析。连接失败
-                        # （outcome=error）不触发浏览器，避免无谓开销。
-                        if current.outcome in ("blocked", "success") and current.http_status in (200, 403, None):
+                        # 用浏览器渲染搜索页（走代理出口）再解析，受渲染节流限制。
+                        # 连接失败（outcome=error）不触发浏览器，避免无谓开销。
+                        if (
+                            render_remaining[0] > 0
+                            and current.outcome in ("blocked", "success")
+                            and current.http_status in (200, 403, None)
+                        ):
+                            render_remaining[0] -= 1
                             try:
                                 rendered = browser_markup(
                                     task.query_url,
