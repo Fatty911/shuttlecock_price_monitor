@@ -1385,10 +1385,32 @@ def run_live_round(
                             current.outcome == "success"
                             and parse_product_cards(current.markup, task)
                         ):
+                            probe_method[0] = "requests-proxy"
                             return True
+                        # JS 壳：requests 可达但无商品卡（200/403/None 状态）时，
+                        # 用浏览器渲染搜索页（走代理出口）再解析。连接失败
+                        # （outcome=error）不触发浏览器，避免无谓开销。
+                        if current.outcome in ("blocked", "success") and current.http_status in (200, 403, None):
+                            try:
+                                rendered = browser_markup(
+                                    task.query_url,
+                                    task.platform,
+                                    LOCAL_HTTP_PROXY,
+                                )
+                                last_fetch[0] = (task, rendered)
+                                if (
+                                    rendered.outcome == "success"
+                                    and parse_product_cards(rendered.markup, task)
+                                ):
+                                    probe_method[0] = "browser-proxy"
+                                    return True
+                            except Exception:
+                                continue
                 except requests.RequestException:
                     return False
                 return False
+
+            probe_method: list[str] = ["requests-proxy"]
 
             selected, stats = select_proxy_node(
                 platform,
@@ -1405,7 +1427,7 @@ def run_live_round(
                 _canary_evidence(
                     selected_probe[0],
                     selected_probe[1],
-                    "requests-proxy",
+                    probe_method[0],
                 )
             )
 

@@ -751,3 +751,88 @@ def test_success_canary_keeps_platform_tasks_running(monkeypatch):
     assert len(results) == 69
     # 任务被实际爬取而非跳过
     assert all(r.method != "canary-skip" for r in results)
+
+
+def test_canary_probe_uses_browser_render_for_js_shell(monkeypatch):
+    """requests 返回 JS 壳（200 无卡片）时，probe 必须用浏览器渲染解析出卡片，
+    平台任务照常爬取（不再 canary-skip）。"""
+    import os
+    from shuttle_monitor import monitor as mon
+    tasks = build_tasks(load_config())
+    monkeypatch.setenv("PROXY_ENABLED", "true")
+    browser_calls = []
+
+    # controller 正常（模拟代理可用）
+    class FakeController:
+        def __init__(self):
+            self.nodes = ["node-a"]
+        def switch(self, node):
+            pass
+
+    monkeypatch.setattr(mon, "ClashProxyController", FakeController)
+
+    # requests 返回 JS 壳：200 但无商品卡
+    def fake_request_markup(url, *args, **kwargs):
+        return FetchResult("<html><body>JS shell</body></html>", "success", 200, url, None, 1, 5)
+
+    # 浏览器渲染后能解析出卡片
+    def fake_browser_markup(url, platform, proxy_server=None):
+        browser_calls.append((url, proxy_server))
+        return FetchResult("<html>rendered</html>", "success", 200, url, None, 1, 5)
+
+    def fake_parse_cards(markup, task):
+        if "rendered" in markup:
+            return [
+                ProductCandidate(
+                    platform=task.platform,
+                    model_key=task.model_key,
+                    title="匹配",
+                    price=100.0,
+                    product_url=f"https://item.{task.platform}.test/1",
+                    stock_status="in_stock",
+                    native_product_id="1",
+                )
+            ]
+        return []
+
+    monkeypatch.setattr(mon, "request_markup", fake_request_markup)
+    monkeypatch.setattr(mon, "browser_markup", fake_browser_markup)
+    monkeypatch.setattr(mon, "parse_product_cards", fake_parse_cards)
+
+    results, canaries, stats = mon.run_live_round(tasks)
+    # 浏览器必须被调用（渲染 JS 壳），且走代理
+    assert browser_calls, "browser render must be attempted for JS shell"
+    assert all(proxy_server == mon.LOCAL_HTTP_PROXY for _, proxy_server in browser_calls)
+    # 平台任务不应全 canary-skip（至少能尝试爬取）
+    assert any(r.method != "canary-skip" for r in results)
+
+
+def test_canary_probe_skips_browser_for_connection_failures(monkeypatch):
+    """requests 连接失败（error）时，probe 不得触发浏览器渲染。"""
+    import os
+    from shuttle_monitor import monitor as mon
+    tasks = build_tasks(load_config())
+    monkeypatch.setenv("PROXY_ENABLED", "true")
+    browser_calls = []
+
+    class FakeController:
+        def __init__(self):
+            self.nodes = ["node-a"]
+        def switch(self, node):
+            pass
+
+    monkeypatch.setattr(mon, "ClashProxyController", FakeController)
+
+    def fake_request_markup(url, *args, **kwargs):
+        return FetchResult("", "error", 503, url, "http_503", 1, 5000)
+
+    def fake_browser_markup(url, platform, proxy_server=None):
+        browser_calls.append(url)
+        return FetchResult("", "blocked", 403, url, "http_403", 1, 5)
+
+    monkeypatch.setattr(mon, "request_markup", fake_request_markup)
+    monkeypatch.setattr(mon, "browser_markup", fake_browser_markup)
+
+    results, canaries, stats = mon.run_live_round(tasks)
+    assert browser_calls == [], f"browser must not run for connection failures, got {len(browser_calls)}"
+    assert len(results) == 69
