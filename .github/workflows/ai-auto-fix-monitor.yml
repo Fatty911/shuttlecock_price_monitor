@@ -1,0 +1,227 @@
+name: AI Auto Fix Monitor
+
+on:
+  workflow_run:
+    workflows: ["Shuttlecock price monitor"]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: write
+  actions: write
+  issues: write
+
+concurrency:
+  group: ai-auto-fix-${{ github.event.workflow_run.id }}
+  cancel-in-progress: false
+
+jobs:
+  ai_monitor:
+    name: "AI Diagnose → ${{ github.event.workflow_run.name }}"
+    if: >-
+      ${{
+        github.event.workflow_run.head_branch == 'main' &&
+        github.event.workflow_run.conclusion == 'failure'
+      }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      WORKFLOW_NAME: ${{ github.event.workflow_run.name }}
+      WORKFLOW_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+      WORKFLOW_RUN_ID: ${{ github.event.workflow_run.id }}
+      WORKFLOW_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+      GH_TOKEN: ${{ secrets.ACTION_PAT || github.token }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@main
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@main
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+
+      - name: Download completed workflow logs
+        run: |
+          set +e
+          gh run view "$WORKFLOW_RUN_ID" --log-failed > workflow_error.log 2>/tmp/gh_failed_log_error.txt
+          gh run view "$WORKFLOW_RUN_ID" --log > workflow_full.log 2>/tmp/gh_full_log_error.txt
+          set -e
+          LOGS=""
+          for candidate in workflow_error.log workflow_full.log; do
+            if [ -s "$candidate" ]; then
+              LOGS="$LOGS $candidate"
+              echo "found log: $candidate ($(wc -c < "$candidate") bytes)"
+            fi
+          done
+          if [ -z "$LOGS" ]; then
+            echo "无法获取 workflow 日志"
+            echo "no_logs=true" >> "$GITHUB_ENV"
+          else
+            echo "LOG_FILES=$LOGS" >> "$GITHUB_ENV"
+          fi
+
+      - name: Classify run and build diagnosis prompt
+        id: classify
+        if: env.no_logs != 'true'
+        run: >-
+          python scripts/classify_shuttle_failure.py
+          ${{ env.LOG_FILES }}
+          --prompt-output diagnosis_prompt.md
+          --github-output "$GITHUB_OUTPUT"
+
+      - name: File or update diagnosis issue
+        if: >-
+          env.no_logs != 'true' &&
+          (steps.classify.outputs.should_diagnose == 'true' ||
+           (steps.classify.outputs.classification != '' &&
+            steps.classify.outputs.classification != 'expected_success'))
+        run: |
+          CLASSIFICATION="${{ steps.classify.outputs.classification }}"
+          REASON="${{ steps.classify.outputs.reason }}"
+          TITLE="[AI诊断] ${WORKFLOW_NAME} ${WORKFLOW_CONCLUSION}: ${CLASSIFICATION}"
+          BODY_FILE="diagnosis_issue.md"
+          {
+            echo "- Workflow: \`${WORKFLOW_NAME}\`"
+            echo "- Run: ${WORKFLOW_RUN_ID}"
+            echo "- Conclusion: ${WORKFLOW_CONCLUSION}"
+            echo "- Head SHA: ${WORKFLOW_HEAD_SHA}"
+            echo "- 分类: ${CLASSIFICATION}"
+            echo "- 判定原因: ${REASON}"
+            echo
+          } > "$BODY_FILE"
+          if [ -s diagnosis_prompt.md ]; then
+            {
+              echo "## 日志摘录（脱敏）"
+              echo
+              echo '```'
+              head -c 8000 diagnosis_prompt.md
+              echo '```'
+            } >> "$BODY_FILE"
+          fi
+
+          gh label create ai-diagnosis \
+            --description "AI auto-diagnosed monitor failure" \
+            --color E5502B >/dev/null 2>&1 || true
+
+          EXISTING=""
+          if gh api "repos/${GITHUB_REPOSITORY}/issues?state=open&labels=ai-diagnosis&per_page=100" \
+              --jq '.[] | select(.pull_request == null) | [.number, .title] | @tsv' \
+              > open_diagnosis_issues.tsv 2>/dev/null; then
+            EXISTING=$(WORKFLOW_NAME="$WORKFLOW_NAME" python - <<'PY'
+          import os
+          from pathlib import Path
+
+          needle = os.environ["WORKFLOW_NAME"]
+          for line in Path("open_diagnosis_issues.tsv").read_text(encoding="utf-8").splitlines():
+              number, _, title = line.partition("\t")
+              if needle in title:
+                  print(number)
+                  break
+          PY
+          )
+          else
+            echo "无法读取现有诊断 issue，直接创建新 issue"
+          fi
+
+          if [ -n "$EXISTING" ]; then
+            echo "更新已有诊断 issue #${EXISTING}"
+            gh issue comment "$EXISTING" --body-file "$BODY_FILE"
+          else
+            if ! gh issue create \
+                --title "$TITLE" \
+                --body-file "$BODY_FILE" \
+                --label "ai-diagnosis"; then
+              echo "带标签创建失败，回退为无标签诊断 issue"
+              gh issue create \
+                --title "$TITLE" \
+                --body-file "$BODY_FILE"
+            fi
+          fi
+
+      - name: Prepare repair prompt
+        id: repair_prompt
+        if: >-
+          steps.classify.outputs.should_diagnose == 'true' &&
+          (steps.classify.outputs.classification == 'site_breakage' ||
+           steps.classify.outputs.classification == 'ci_breakage')
+        run: |-
+          EXCERPT=""
+          if [ -s workflow_error.log ]; then
+            EXCERPT="$(head -c 8000 workflow_error.log)"
+          elif [ -s workflow_full.log ]; then
+            EXCERPT="$(head -c 8000 workflow_full.log)"
+          fi
+          if [ -z "$EXCERPT" ]; then
+            echo "无失败日志，跳过自修复"
+            echo "should_repair=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "should_repair=true" >> "$GITHUB_OUTPUT"
+          echo "$EXCERPT" > self_repair_excerpt.txt
+          python scripts/self_repair_runner.py build-prompt \
+            --log-excerpt "$EXCERPT" \
+            --classification "${{ steps.classify.outputs.classification }}" \
+            --reason "${{ steps.classify.outputs.reason }}" \
+            --prompt-output prompt.md
+
+      - name: Prepare isolated repair Agent directory
+        if: steps.repair_prompt.outputs.should_repair == 'true'
+        run: |
+          mkdir -p "$RUNNER_TEMP/opencode-agent"
+          cp prompt.md "$RUNNER_TEMP/opencode-agent/prompt.md"
+
+      - name: Set up Node.js for Agent tools
+        if: steps.repair_prompt.outputs.should_repair == 'true'
+        uses: actions/setup-node@main
+        with:
+          node-version: "22"
+
+      - name: Install OpenCode CLI (latest, auto-upgrades)
+        if: steps.repair_prompt.outputs.should_repair == 'true'
+        run: npm install --global opencode-ai@latest
+
+      - name: Repair Agent (read-only OpenCode Agent, Plan key env-only)
+        id: repair_agent
+        if: steps.repair_prompt.outputs.should_repair == 'true'
+        continue-on-error: true
+        env:
+          KIMI_CODINGPLAN_API_KEY: ${{ secrets.KIMI_CODINGPLAN_API_KEY }}
+          OPENCODE_CONFIG_CONTENT: >-
+            {"autoupdate":false,"provider":{"kimi-coding-plan":{"npm":"@ai-sdk/openai-compatible","name":"Kimi Coding Plan","options":{"baseURL":"https://api.kimi.com/coding/v1","apiKey":"{env:KIMI_CODINGPLAN_API_KEY}"},"models":{"k3":{"limit":{"context":1000000,"output":32768}}}}},"agent":{"plan":{"model":"kimi-coding-plan/k3","permission":{"*":"deny","read":"allow","edit":"deny","bash":"deny","webfetch":"deny","task":"deny","question":"deny","external_directory":"deny"}}},"permission":{"*":"deny","read":"allow","edit":"deny","bash":"deny","webfetch":"deny","task":"deny","question":"deny","external_directory":"deny"}}
+        run: >-
+          opencode run --pure --agent plan --model kimi-coding-plan/k3 --format default --dir "$RUNNER_TEMP/opencode-agent" --file prompt.md "Return one JSON object with exactly these top-level fields: patch, reasoning, confidence. Do not call tools or modify files." > repair_patch.json
+
+      - name: Apply, validate, review, commit and re-dispatch
+        id: self_repair
+        if: >-
+          steps.repair_prompt.outputs.should_repair == 'true' &&
+          steps.repair_agent.outcome == 'success'
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.ACTION_PAT || github.token }}
+          NVIDIA_NIM_API_KEY: ${{ secrets.NVIDIA_NIM_API_KEY }}
+        run: >-
+          python scripts/self_repair_runner.py
+          --patch-file repair_patch.json
+          --classification "${{ steps.classify.outputs.classification }}"
+          --reason "${{ steps.classify.outputs.reason }}"
+          --workflow-name "${{ env.WORKFLOW_NAME }}"
+          --workflow-file shuttle-monitor.yml
+          --run-id "${{ env.WORKFLOW_RUN_ID }}"
+          --attempt-marker "self-repair-${{ env.WORKFLOW_RUN_ID }}-${{ env.WORKFLOW_HEAD_SHA }}"
+
+      - name: Report monitor result
+        if: always()
+        run: |
+          echo "classification=${{ steps.classify.outputs.classification }}"
+          echo "reason=${{ steps.classify.outputs.reason }}"
+          echo "should_diagnose=${{ steps.classify.outputs.should_diagnose }}"
+          echo "should_repair=${{ steps.repair_prompt.outputs.should_repair }}"
+          echo "repair_agent=${{ steps.repair_agent.outcome }}"
+          echo "self_repair=${{ steps.self_repair.outcome }}"
+          echo "run_url=${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
