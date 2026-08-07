@@ -19,7 +19,7 @@
 
 任务按配置优先级执行；每个平台按批次轮换至少三个型号做 canary。请求有全局/每域并发限制、可取消 deadline、重试预算和平台熔断。恢复的 checkpoint 只用于同批调度与历史，不会把上一轮完成状态冒充本轮结果。
 
-代理是可选能力。Mihomo 固定为校验过 SHA-256 的版本，只从控制面识别叶子节点；Selector、URLTest、Fallback、LoadBalance 等组不会被当作节点。订阅地址、节点名、Cookie、授权头和浏览器 profile 不进入日志、artifact、Pages 或 issue。没有合法可用链路时诚实输出 blocked。
+代理是可选能力。Mihomo 固定为校验过 SHA-256 的版本，只从控制面识别叶子节点；Selector、URLTest、Fallback、LoadBalance 等组不会被当作节点。订阅地址、节点名、Cookie、授权头和浏览器 profile 不进入日志、artifact、Pages 或 issue。爬虫出口只允许机场订阅节点，禁止自建 VPS 节点作为落地；机场节点全部不可用时诚实禁用代理并输出 blocked，不切换自建节点、不伪装代理可用。
 
 ## v4 输出与两层门
 

@@ -64,7 +64,6 @@ jobs:
       - name: Setup fixed proxy runtime
         env:
           PROXY_SUBSCRIPTIONS: ${{ secrets.PROXY_SUBSCRIPTIONS }}
-          DMIT_PROXY_URL: ${{ secrets.DMIT_PROXY_URL }}
         run: python custom_scripts/setup_proxy_runtime.py
 
       - name: Build complete live round

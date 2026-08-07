@@ -630,3 +630,51 @@ def test_live_evidence_has_required_observability_without_proxy_secrets_or_node_
     assert "subscription" not in serialized.lower()
     assert "node-a" not in serialized
     assert "user:password@" not in serialized
+
+
+def test_proxy_enabled_but_controller_unreachable_blocks_all_without_direct_requests(monkeypatch):
+    """PROXY_ENABLED=true 但 Clash 控制面不可达时：全部 blocked(proxy_unavailable)，
+    不得静默降级直连（避免把代理故障伪装成直连结果）。"""
+    import os
+    from shuttle_monitor import monitor as mon
+    tasks = build_tasks(load_config())
+    monkeypatch.setenv("PROXY_ENABLED", "true")
+    calls = []
+
+    def boom(*args, **kwargs):
+        raise requests.RequestException("control plane down")
+
+    monkeypatch.setattr(mon.ClashProxyController, "__init__", boom)
+    # 如果实现错误地走了直连/浏览器，这里会被调用
+    monkeypatch.setattr(mon, "request_markup", lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not issue direct requests")))
+    monkeypatch.setattr(mon, "browser_markup", lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not launch browser")))
+
+    results, canaries, stats = mon.run_live_round(tasks)
+    assert len(results) == 69
+    assert all(r.outcome == "blocked" and r.block_reason == "proxy_unavailable" for r in results)
+    assert len(canaries) == 9
+    assert all(c["outcome"] == "blocked" and c["block_reason"] == "proxy_unavailable" for c in canaries)
+    assert all(s["tested"] == 0 and s["selected"] is False for s in stats.values())
+
+
+def test_proxy_disabled_still_uses_direct_requests(monkeypatch):
+    """PROXY_ENABLED=false（默认无代理）时保持直连语义不变。"""
+    import os
+    from shuttle_monitor import monitor as mon
+    tasks = build_tasks(load_config())
+    monkeypatch.delenv("PROXY_ENABLED", raising=False)
+    direct_hits = []
+
+    def fake_request_markup(url, *args, **kwargs):
+        direct_hits.append(url)
+        return FetchResult("", "blocked", 403, url, "http_403", 1, 5)
+
+    def fake_browser_markup(url, platform, proxy_server=None):
+        return FetchResult("", "blocked", 403, url, "http_403", 1, 5)
+
+    monkeypatch.setattr(mon, "request_markup", fake_request_markup)
+    monkeypatch.setattr(mon, "browser_markup", fake_browser_markup)
+    results, canaries, stats = mon.run_live_round(tasks)
+    assert len(results) == 69
+    assert direct_hits, "直连 canary 应被调用"
+    assert all(s["tested"] == 0 for s in stats.values())

@@ -1302,11 +1302,13 @@ def run_live_round(
         return request_markup(url, getter=direct_session.get)
 
     controller: ClashProxyController | None = None
+    proxy_unavailable = False
     if os.getenv("PROXY_ENABLED", "").lower() == "true":
         try:
             controller = ClashProxyController()
         except (requests.RequestException, RuntimeError, ValueError):
             controller = None
+            proxy_unavailable = True
     local_proxies = {"http": LOCAL_HTTP_PROXY, "https": LOCAL_HTTP_PROXY}
     selection_started = time.monotonic()
     routes: dict[str, str | None] = {}
@@ -1324,6 +1326,24 @@ def run_live_round(
 
     for platform in ("taobao", "jd", "pdd"):
         platform_canaries = rotating_canaries[platform]
+        if proxy_unavailable:
+            # 代理声称启用但控制面不可达：诚实 blocked，绝不静默降级直连。
+            direct_evidence = [
+                _canary_evidence(
+                    task,
+                    FetchResult("", "blocked", None, task.query_url, "proxy_unavailable", 0, 0),
+                    "proxy-unavailable",
+                )
+                for task in platform_canaries
+            ]
+            canaries.extend(direct_evidence)
+            routes[platform] = None
+            proxy_stats[platform] = {
+                "tested": 0,
+                "selected": False,
+                "budget_exhausted": False,
+            }
+            continue
         direct_results = [
             (task, direct_request(task.query_url))
             for task in platform_canaries
@@ -1390,8 +1410,29 @@ def run_live_round(
             )
 
     all_results: list[AttemptResult] = []
+    checked_at = dt.datetime.now(dt.timezone.utc).isoformat().replace("+00:00", "Z")
     for platform in ("taobao", "jd", "pdd"):
         platform_tasks = [task for task in tasks if task.platform == platform]
+        if proxy_unavailable:
+            # 代理不可用：诚实 blocked，不发起任何直连或浏览器请求。
+            all_results.extend(
+                AttemptResult(
+                    task,
+                    "blocked",
+                    None,
+                    None,
+                    None,
+                    None,
+                    task.query_url,
+                    "proxy-unavailable",
+                    "proxy_unavailable",
+                    0,
+                    0,
+                    checked_at,
+                )
+                for task in platform_tasks
+            )
+            continue
         selected = routes[platform]
         if selected is not None and controller is not None:
             try:

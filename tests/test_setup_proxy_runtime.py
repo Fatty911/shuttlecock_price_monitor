@@ -77,3 +77,11 @@ def test_invalid_subscription_secret_is_never_echoed(capsys):
     secret = "not-a-url-token=super-secret"
     assert parse_proxy_secret(secret) == ([], [])
     assert secret not in capsys.readouterr().out
+
+
+def test_no_self_hosted_fallback_landing_nodes():
+    """爬虫出口只允许机场订阅节点：源码与 workflow 不得引用自建 VPS 代理（如 DMIT）。"""
+    source = (REPO_ROOT / "custom_scripts" / "setup_proxy_runtime.py").read_text(encoding="utf-8")
+    assert "DMIT" not in source
+    workflow = (REPO_ROOT / ".github" / "workflows" / "shuttle-monitor.yml").read_text(encoding="utf-8")
+    assert "DMIT" not in workflow
