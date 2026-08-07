@@ -247,3 +247,29 @@ def test_attest_id_token_failure_is_infra_transient():
     classification, _, should_diagnose = classify(text, "failure")
     assert classification == "expected_infra_transient"
     assert should_diagnose is False
+
+
+def test_compileall_command_noise_does_not_trigger_ci_breakage():
+    """build 里的 python -m compileall -q 是例行命令，不得误判为 ci_breakage。"""
+    text = (
+        "python -m compileall -q shuttle_monitor scripts custom_scripts\n"
+        "python -m pytest -q\n"
+        "product_gate failed\n"
+        "{\"live_price_quality_gate\": \"fail\"}\n"
+    )
+    classification, _, should_diagnose = classify(text, "failure")
+    assert classification == "expected_gate_block"
+    assert should_diagnose is False
+
+
+def test_gate_block_takes_priority_over_ci_noise():
+    """live_price_quality_gate 失败优先于日志中的 pytest 安装/运行噪音。"""
+    text = (
+        "Collecting pytest==9.0.2\n"
+        "Installing collected packages: pytest\n"
+        "product_gate | Live product gate | completed | failure\n"
+        "live_price_quality_gate: fail\n"
+    )
+    classification, _, should_diagnose = classify(text, "failure")
+    assert classification == "expected_gate_block"
+    assert should_diagnose is False

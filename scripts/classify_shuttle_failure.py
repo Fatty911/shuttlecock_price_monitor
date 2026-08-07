@@ -92,8 +92,8 @@ CI_BREAKAGE_PATTERNS = [
     r"ModuleNotFoundError",
     r"ImportError",
     r"SyntaxError",
-    r"compileall",
     r"IndentationError",
+    r"compileall.*(error|failed)",
 ]
 
 # Structural gate failures are expected when upstream is blocked and are not
@@ -159,6 +159,13 @@ def classify(text: str, conclusion: str) -> tuple[str, str, bool]:
             False,
         )
 
+    if any(re.search(p, text, re.I) for p in STRUCTURAL_GATE_PATTERNS):
+        return (
+            "expected_gate_block",
+            "结构/质量门如实失败（上游 blocked 时状态页展示真实失败），只告警不修码",
+            False,
+        )
+
     if any(re.search(p, text, re.I) for p in CI_BREAKAGE_PATTERNS):
         return (
             "ci_breakage",
@@ -171,13 +178,6 @@ def classify(text: str, conclusion: str) -> tuple[str, str, bool]:
             "site_breakage",
             "解析器/选择器或代码异常，可自动修复",
             True,
-        )
-
-    if any(re.search(p, text, re.I) for p in STRUCTURAL_GATE_PATTERNS):
-        return (
-            "expected_gate_block",
-            "结构/质量门如实失败（上游 blocked 时状态页展示真实失败），只告警不修码",
-            False,
         )
 
     return "unknown", "未能归类失败原因，保守进入 AI 诊断（只诊断不改码）", True
