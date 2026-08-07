@@ -1433,6 +1433,30 @@ def run_live_round(
                 for task in platform_tasks
             )
             continue
+        if routes[platform] is None and not any(
+            row["platform"] == platform and row["outcome"] == "success"
+            for row in canaries
+        ):
+            # 该平台 canary 全 blocked 且无代理可用：平台不可达，任务直接跳过，
+            # 不逐任务发起请求或开浏览器（避免 45s×23 次的无谓超时）。
+            all_results.extend(
+                AttemptResult(
+                    task,
+                    "blocked",
+                    None,
+                    None,
+                    None,
+                    None,
+                    task.query_url,
+                    "canary-skip",
+                    "platform_unreachable",
+                    0,
+                    0,
+                    checked_at,
+                )
+                for task in platform_tasks
+            )
+            continue
         selected = routes[platform]
         if selected is not None and controller is not None:
             try:

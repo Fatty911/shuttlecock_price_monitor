@@ -9,6 +9,7 @@ import requests
 
 from shuttle_monitor.monitor import (
     AttemptResult,
+    ProductCandidate,
     BrowserCircuitBreaker,
     BrowserLimiter,
     FetchResult,
@@ -678,3 +679,75 @@ def test_proxy_disabled_still_uses_direct_requests(monkeypatch):
     assert len(results) == 69
     assert direct_hits, "直连 canary 应被调用"
     assert all(s["tested"] == 0 for s in stats.values())
+
+
+def test_all_blocked_canaries_skip_platform_tasks_without_extra_requests(monkeypatch):
+    """直连 canary 全 blocked 且无代理时：该平台任务直接跳过（快速 blocked），
+    不逐任务发起请求或开浏览器。"""
+    import os
+    from shuttle_monitor import monitor as mon
+    tasks = build_tasks(load_config())
+    monkeypatch.delenv("PROXY_ENABLED", raising=False)
+    request_calls = []
+    browser_calls = []
+
+    def fake_request_markup(url, *args, **kwargs):
+        request_calls.append(url)
+        return FetchResult("", "blocked", 403, url, "http_403", 1, 5)
+
+    def fake_browser_markup(url, platform, proxy_server=None):
+        browser_calls.append(url)
+        return FetchResult("", "blocked", 403, url, "http_403", 1, 5)
+
+    monkeypatch.setattr(mon, "request_markup", fake_request_markup)
+    monkeypatch.setattr(mon, "browser_markup", fake_browser_markup)
+
+    results, canaries, stats = mon.run_live_round(tasks)
+    assert len(results) == 69
+    # 只允许 9 次 canary 直连（3 平台 × 3），任务全部跳过
+    assert len(request_calls) == 9, f"expected 9 canary requests, got {len(request_calls)}"
+    assert len(browser_calls) == 0, f"expected no browser launches, got {len(browser_calls)}"
+    assert all(r.outcome == "blocked" and r.block_reason == "platform_unreachable" for r in results)
+    summary = validate_round(results, tasks)
+    assert summary["attempted"] == summary["blocked"] == 69
+
+
+def test_success_canary_keeps_platform_tasks_running(monkeypatch):
+    """canary 有 success 的平台必须照常逐任务爬取（不跳过）。"""
+    import os
+    from shuttle_monitor import monitor as mon
+    tasks = build_tasks(load_config())
+    monkeypatch.delenv("PROXY_ENABLED", raising=False)
+    request_calls = []
+
+    def fake_request_markup(url, *args, **kwargs):
+        request_calls.append(url)
+        return FetchResult("<html>ok</html>", "success", 200, url, None, 1, 5)
+
+    def fake_parse_cards(markup, task):
+        # 让所有 canary 都能解析出候选 → canary success
+        return [
+            ProductCandidate(
+                platform=task.platform,
+                model_key=task.model_key,
+                title="匹配",
+                price=100.0,
+                product_url=f"https://item.{task.platform}.test/1",
+                stock_status="in_stock",
+                native_product_id="1",
+            )
+        ]
+
+    def fake_browser_markup(url, platform, proxy_server=None):
+        return FetchResult("", "blocked", 403, url, "http_403", 1, 5)
+
+    monkeypatch.setattr(mon, "request_markup", fake_request_markup)
+    monkeypatch.setattr(mon, "parse_product_cards", fake_parse_cards)
+    monkeypatch.setattr(mon, "browser_markup", fake_browser_markup)
+
+    results, canaries, stats = mon.run_live_round(tasks)
+    # canary 全部 success → 平台任务照常发起请求（远多于 9 次 canary）
+    assert len(request_calls) > 9, f"expected task requests beyond canaries, got {len(request_calls)}"
+    assert len(results) == 69
+    # 任务被实际爬取而非跳过
+    assert all(r.method != "canary-skip" for r in results)

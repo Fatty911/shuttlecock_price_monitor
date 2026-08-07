@@ -27,3 +27,8 @@
 ## 交付与回滚
 
 变更遵守 `AGENTS.md` 的两次独立 2/2 评审和 RED→GREEN 证据。交付前执行全套测试、安全/XSS/敏感扫描与 `git diff --check`。只允许非 force `HEAD:main`；远端前移时先整合 main，重新测试并重审完整 staged diff。
+
+
+## Canary 跳过
+
+平台 canary 全部被阻断且无可用代理时，该平台任务直接跳过（快速 blocked，method=canary-skip, block_reason=platform_unreachable），不逐任务请求或开浏览器；状态守恒不变。
