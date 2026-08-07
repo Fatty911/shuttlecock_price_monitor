@@ -36,18 +36,38 @@ EXTERNAL_BLOCK_PATTERNS = [
 ]
 
 # Proxy degradation markers (airport subscription / mihomo / DNS failures).
+# 注意：setup 的逐节点 delay test 是例行输出（即使代理启用成功也会打印
+# 503），不能作为代理降级信号；只认最终判定类信号。
 PROXY_DEGRADED_PATTERNS = [
     r"代理连通性测试失败",
     r"所有代理节点连通性测试失败",
     r"可用节点: 0/",
     r"订阅已获取但没有解析到可用节点",
-    r"delay test",
-    r"An error occurred in the delay test",
     r"mihomo 控制端口未就绪",
     r"mihomo 不可用",
     r"无法解析到可用节点",
+    r"未配置 PROXY_SUBSCRIPTIONS",
     r"Name or service not known",
     r"Temporary failure in name resolution",
+]
+
+# Transient GitHub Actions infrastructure failures: artifact upload/download
+# and OIDC attestation network hiccups.  Retry, do not change code.
+INFRA_TRANSIENT_PATTERNS = [
+    r"Failed to FinalizeArtifact",
+    r"Failed to CreateArtifact",
+    r"ECONNRESET",
+    r"Unable to make request",
+    r"Unable to download artifact",
+    r"Artifact not found",
+    r"Failed to get ID token",
+    r"Client network socket disconnected",
+    r"secure TLS connection",
+    r"Internal Service Error",
+    r"502 Bad Gateway",
+    r"504 Gateway Timeout",
+    r"runner system failure",
+    r"Remote host terminated the handshake",
 ]
 
 # Site breakage: parser / selector errors inside our code.
@@ -122,6 +142,13 @@ def classify(text: str, conclusion: str) -> tuple[str, str, bool]:
         return (
             "expected_external_block",
             "电商搜索页对匿名出口风控（JS 壳/登录墙/验证码），属平台策略，只告警不修码",
+            False,
+        )
+
+    if any(re.search(p, text, re.I) for p in INFRA_TRANSIENT_PATTERNS):
+        return (
+            "expected_infra_transient",
+            "GitHub Actions 基础设施瞬时故障（artifact/OIDC 网络抖动），重试即可，不改代码",
             False,
         )
 

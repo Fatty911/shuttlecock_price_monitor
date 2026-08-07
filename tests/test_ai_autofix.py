@@ -220,3 +220,30 @@ def test_read_logs_caps_large_files(tmp_path):
     text = read_logs([str(big)])
     assert "TAIL-MARKER" in text
     assert len(text) <= MAX_LOG_BYTES + 100
+
+
+def test_delay_test_noise_does_not_trigger_proxy_degraded():
+    """setup 逐节点 delay test 是例行输出（代理成功时也打印 503），不得误判。"""
+    text = (
+        "❌ PASS [Pass] HTTP 503 {\"message\":\"An error occurred in the delay test\"}\n"
+        "❌ 香港01 [AnyTLS] HTTP 503\n"
+        "代理连通性测试通过: https://www.jd.com HTTP 200\n"
+        "可用节点: 12/136\n"
+    )
+    classification, _, should_diagnose = classify(text, "failure")
+    assert classification != "expected_proxy_degraded", classification
+
+
+def test_artifact_ecnreset_is_infra_transient():
+    text = "##[error]Failed to FinalizeArtifact: Unable to make request: ECONNRESET\n"
+    classification, reason, should_diagnose = classify(text, "failure")
+    assert classification == "expected_infra_transient"
+    assert should_diagnose is False
+    assert "重试即可" in reason
+
+
+def test_attest_id_token_failure_is_infra_transient():
+    text = "##[error]Error: Failed to get ID token: Client network socket disconnected before secure TLS connection was established\n"
+    classification, _, should_diagnose = classify(text, "failure")
+    assert classification == "expected_infra_transient"
+    assert should_diagnose is False
