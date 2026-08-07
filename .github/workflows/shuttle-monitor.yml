@@ -110,6 +110,10 @@ jobs:
           retention-days: 30
 
       - name: Attest public manifest
+        # 供应链证明非产品门核心；OIDC/attestation 服务瞬态故障（Failed to
+        # get ID token / socket disconnected）不应阻断部署链。产品门在
+        # product_gate job 强制。失败仅记录告警，由 AI 分类器归 infra_transient。
+        continue-on-error: true
         uses: actions/attest@v4
         with:
           subject-path: site/manifest.json
