@@ -9,11 +9,11 @@ Pages 只把 `schema_version: 4` 且 `mode: live` 的批次当作当前价格。
 - `batch_id`: `shuttlecock_price_monitor:<run_id>:<run_attempt>`
 - `run_id`、`run_attempt`、`source_sha`、`config_sha256`
 - `started_at`、`finished_at`、`mode`、`baseline_batch_id`
-- `expected_tasks: 69`
+- `expected_tasks: 93`
 - `statuses`、`prices`、守恒 `summary`
 - `evidence_sha256`、`audit_status`
 
-`source_sha` 必须为 40 位小写十六进制，配置和证据摘要必须为 64 位 SHA-256。`success + blocked + rejected + error + out_of_stock` 必须精确等于 69。
+`source_sha` 必须为 40 位小写十六进制，配置和证据摘要必须为 64 位 SHA-256。`success + blocked + rejected + error + out_of_stock` 必须精确等于 93。
 
 ## Status
 

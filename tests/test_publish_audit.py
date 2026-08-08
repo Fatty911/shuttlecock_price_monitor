@@ -71,7 +71,7 @@ def _blocked_envelope() -> tuple[dict, list[str]]:
     task_ids = [
         f"{platform}:model-{index}"
         for platform in ("taobao", "jd", "pdd")
-        for index in range(23)
+        for index in range(31)
     ]
     statuses = [
         {
@@ -100,7 +100,7 @@ def _blocked_envelope() -> tuple[dict, list[str]]:
             finished_at="2026-07-30T00:01:00Z",
             mode="live",
             baseline_batch_id=None,
-            expected_tasks=69,
+            expected_tasks=93,
             statuses=statuses,
             prices=[],
             evidence_sha256="d" * 64,

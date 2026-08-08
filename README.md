@@ -1,6 +1,6 @@
 # 羽毛球真实价格监控
 
-本仓每轮固定监控 23 个型号 × 淘宝/天猫、京东、拼多多，共 69 个稳定任务。`products.yaml` 的 `config_revision`、目标速度和显式退休列表共同约束任务集合；速度进入任务 ID 和搜索条件，不能被静默忽略。
+本仓每轮固定监控 31 个型号 × 淘宝/天猫、京东、拼多多，共 93 个稳定任务。`products.yaml` 的 `config_revision`、目标速度和显式退休列表共同约束任务集合；速度进入任务 ID 和搜索条件，不能被静默忽略。
 
 ## 真实性边界
 
@@ -26,7 +26,7 @@
 Pages 保留兼容文件名，并新增批次契约：
 
 ```text
-site/data/status.json          精确 69 条本轮状态
+site/data/status.json          精确 93 条本轮状态
 site/data/prices.json          仅本轮详情复核 success
 site/data/price_history.json   180 天追加事件，不回填当前价
 site/data/summary.json         结果守恒与分平台摘要
@@ -36,7 +36,7 @@ site/manifest.json             batch/SHA/config 与文件摘要
 site/audit.json                结构门、产品门、fingerprint
 ```
 
-部署前结构门要求 v4、精确 69 个唯一任务、状态守恒、SHA/config/file hash 一致，且非成功记录无价格。结构有效时，即使上游 blocked，也允许状态页展示真实失败。
+部署前结构门要求 v4、精确 93 个唯一任务、状态守恒、SHA/config/file hash 一致，且非成功记录无价格。结构有效时，即使上游 blocked，也允许状态页展示真实失败。
 
 部署后必须通过正常 TLS 拉取公开 manifest 并逐文件核验。产品门还要求淘宝、京东、拼多多各至少一个本轮真实同卡、详情复核、官方 URL 的商品价。任一平台为零、Pages TLS 异常或公开 manifest 不一致时，workflow 失败并告警，禁止宣称完成或生成合格 Release。
 
@@ -52,7 +52,7 @@ python -m compileall -q shuttle_monitor scripts custom_scripts
 python -m shuttle_monitor.monitor --output
 ```
 
-不带 `--live` 的输出固定为 `mode=fixture`，只生成 69 条 `offline_smoke_no_network` 状态；结构门和产品门都必须失败。授权 live 运行使用：
+不带 `--live` 的输出固定为 `mode=fixture`，只生成 93 条 `offline_smoke_no_network` 状态；结构门和产品门都必须失败。授权 live 运行使用：
 
 ```bash
 python -m shuttle_monitor.monitor --live --output

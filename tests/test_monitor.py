@@ -42,11 +42,11 @@ def fixture(name: str) -> str:
     return FIXTURES.joinpath(name).read_text(encoding="utf-8")
 
 
-def test_builds_exactly_69_unique_tasks():
+def test_builds_exactly_93_unique_tasks():
     tasks = build_tasks(load_config())
-    assert len(tasks) == 69
-    assert len({task.key for task in tasks}) == 69
-    assert len({task.model_key for task in tasks}) == 23
+    assert len(tasks) == 93
+    assert len({task.key for task in tasks}) == 93
+    assert len({task.model_key for task in tasks}) == 31
     assert {task.platform for task in tasks} == {"taobao", "jd", "pdd"}
     assert all(task.query_url and task.product_url is None for task in tasks)
     assert all(task.speed and f":speed-{task.speed}" in task.key for task in tasks)
@@ -214,34 +214,34 @@ def result_for(task: ProductTask, outcome: str = "blocked", **overrides):
     return AttemptResult(**values)
 
 
-def test_round_schema_has_fixed_69_statuses_and_conservation():
+def test_round_schema_has_fixed_93_statuses_and_conservation():
     tasks = build_tasks(load_config())
     results = [result_for(task) for task in tasks]
     summary = validate_round(results, tasks)
-    assert summary["attempted"] == summary["blocked"] == 69
+    assert summary["attempted"] == summary["blocked"] == 93
     assert summary["success"] == summary["error"] == 0
-    assert summary["models"] == 23
+    assert summary["models"] == 31
     assert summary["platforms"] == {
         "taobao": {
-            "attempted": 23,
+            "attempted": 31,
             "success": 0,
-            "blocked": 23,
+            "blocked": 31,
             "rejected": 0,
             "error": 0,
             "out_of_stock": 0,
         },
         "jd": {
-            "attempted": 23,
+            "attempted": 31,
             "success": 0,
-            "blocked": 23,
+            "blocked": 31,
             "rejected": 0,
             "error": 0,
             "out_of_stock": 0,
         },
         "pdd": {
-            "attempted": 23,
+            "attempted": 31,
             "success": 0,
-            "blocked": 23,
+            "blocked": 31,
             "rejected": 0,
             "error": 0,
             "out_of_stock": 0,
@@ -312,7 +312,7 @@ def test_all_blocked_still_publishes_status_page_but_quality_gate_is_false(tmp_p
     tasks = build_tasks(load_config())
     results = [result_for(task) for task in tasks]
     public = build_public_data(results, tasks, [])
-    assert len(public["status"]) == 69
+    assert len(public["status"]) == 93
     assert public["prices"] == []
     assert public["price_history"] == []
     assert public["quality_gate"] is False
@@ -533,8 +533,8 @@ def test_crawl_attempts_every_task_even_when_all_requests_are_blocked():
         return fetched(fixture("jd_challenge.html"), "blocked", 403, "http_403")
 
     results = crawl_tasks(tasks, request_fn=request_fn, browser_fn=lambda *_: pytest.fail("no browser on 403"))
-    assert len(calls) == 69
-    assert len(results) == 69
+    assert len(calls) == 93
+    assert len(results) == 93
     assert {result.outcome for result in results} == {"blocked"}
     assert all(result.price is None and result.product_url is None for result in results)
 
@@ -552,10 +552,10 @@ def test_browser_challenge_fuse_still_emits_all_platform_results():
         request_fn=lambda _: fetched("<html><body>JavaScript shell</body></html>"),
         browser_fn=browser_fn,
     )
-    assert len(results) == 23
+    assert len(results) == 31
     assert len(browser_calls) == 10
     assert all(result.outcome == "blocked" for result in results)
-    assert sum(result.block_reason == "browser_circuit_open" for result in results) == 13
+    assert sum(result.block_reason == "browser_circuit_open" for result in results) == 21
 
 
 def test_partial_live_parser_success_is_same_card_and_never_uses_browser():
@@ -614,7 +614,7 @@ def test_live_evidence_has_required_observability_without_proxy_secrets_or_node_
         ],
         proxy_stats={"jd": {"tested": 4, "selected": True, "budget_exhausted": False}},
     )
-    assert len(evidence["tasks"]) == 69
+    assert len(evidence["tasks"]) == 93
     required = {
         "platform",
         "model_key",
@@ -651,7 +651,7 @@ def test_proxy_enabled_but_controller_unreachable_blocks_all_without_direct_requ
     monkeypatch.setattr(mon, "browser_markup", lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not launch browser")))
 
     results, canaries, stats = mon.run_live_round(tasks)
-    assert len(results) == 69
+    assert len(results) == 93
     assert all(r.outcome == "blocked" and r.block_reason == "proxy_unavailable" for r in results)
     assert len(canaries) == 9
     assert all(c["outcome"] == "blocked" and c["block_reason"] == "proxy_unavailable" for c in canaries)
@@ -676,7 +676,7 @@ def test_proxy_disabled_still_uses_direct_requests(monkeypatch):
     monkeypatch.setattr(mon, "request_markup", fake_request_markup)
     monkeypatch.setattr(mon, "browser_markup", fake_browser_markup)
     results, canaries, stats = mon.run_live_round(tasks)
-    assert len(results) == 69
+    assert len(results) == 93
     assert direct_hits, "直连 canary 应被调用"
     assert all(s["tested"] == 0 for s in stats.values())
 
@@ -703,13 +703,13 @@ def test_all_blocked_canaries_skip_platform_tasks_without_extra_requests(monkeyp
     monkeypatch.setattr(mon, "browser_markup", fake_browser_markup)
 
     results, canaries, stats = mon.run_live_round(tasks)
-    assert len(results) == 69
+    assert len(results) == 93
     # 只允许 9 次 canary 直连（3 平台 × 3），任务全部跳过
     assert len(request_calls) == 9, f"expected 9 canary requests, got {len(request_calls)}"
     assert len(browser_calls) == 0, f"expected no browser launches, got {len(browser_calls)}"
     assert all(r.outcome == "blocked" and r.block_reason == "platform_unreachable" for r in results)
     summary = validate_round(results, tasks)
-    assert summary["attempted"] == summary["blocked"] == 69
+    assert summary["attempted"] == summary["blocked"] == 93
 
 
 def test_success_canary_keeps_platform_tasks_running(monkeypatch):
@@ -748,7 +748,7 @@ def test_success_canary_keeps_platform_tasks_running(monkeypatch):
     results, canaries, stats = mon.run_live_round(tasks)
     # canary 全部 success → 平台任务照常发起请求（远多于 9 次 canary）
     assert len(request_calls) > 9, f"expected task requests beyond canaries, got {len(request_calls)}"
-    assert len(results) == 69
+    assert len(results) == 93
     # 任务被实际爬取而非跳过
     assert all(r.method != "canary-skip" for r in results)
 
@@ -835,7 +835,7 @@ def test_canary_probe_skips_browser_for_connection_failures(monkeypatch):
 
     results, canaries, stats = mon.run_live_round(tasks)
     assert browser_calls == [], f"browser must not run for connection failures, got {len(browser_calls)}"
-    assert len(results) == 69
+    assert len(results) == 93
 
 
 def test_canary_browser_render_is_throttled_per_platform(monkeypatch):

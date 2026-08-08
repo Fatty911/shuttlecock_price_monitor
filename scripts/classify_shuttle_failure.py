@@ -188,7 +188,7 @@ def build_prompt(workflow_name: str, run_id: str, conclusion: str, text: str) ->
     return f"""你在 GitHub Actions 中作为羽毛球价格监控仓库的故障诊断代理运行。
 
 ## 仓库背景
-- 仓库：Fatty911/shuttlecock_price_monitor，监控 23 个羽毛球型号 × 淘宝/京东/拼多多（69 任务）
+- 仓库：Fatty911/shuttlecock_price_monitor，监控 31 个羽毛球型号 × 淘宝/京东/拼多多（93 任务）
 - 链路：shuttle-monitor.yml（live 爬取 + 结构门 + 部署 + 产品门）→ monitor-blocked issue
 - 真实性边界：仅详情复核 success 携带价格；验证码/登录/JS 壳一律 blocked；禁止伪造
 - 信任根（自动修复不得修改）：AGENTS.md、.githooks/、scripts/codex_delivery_gate.py、

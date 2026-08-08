@@ -1,4 +1,4 @@
-config_revision: 4
+config_revision: 5
 retired_task_ids: []
 channels:
   - id: taobao
@@ -51,29 +51,29 @@ models:
     aliases: [HUAMEI]
     notes: 常用国产高性价比候选。
   - brand: 骄点
-    names: [经典耐打, 比赛级]
+    names: [紫骄, 红骄, R1, R2]
     speeds: ['76', '77', '78']
     target_speed: '77'
-    aliases: [焦点]
-    notes: 国产品牌定位相近型号，需按实际店铺标题复核。
+    aliases: [焦点, 骄点]
+    notes: 用户指定高端型号（紫骄/红骄/R1/R2）。888 等营销款不作为监控目标。
   - brand: 翎美
-    names: [比赛级, 训练比赛]
+    names: [F1, F2, F3]
     speeds: ['76', '77', '78']
     target_speed: '77'
-    aliases: []
-    notes: 国产品牌定位相近型号，需按实际店铺标题复核。
+    aliases: [翎美]
+    notes: 用户指定 F 系列高端型号。
   - brand: 文杰
-    names: [比赛级, 稳定耐打]
+    names: ['101', '102', '103']
     speeds: ['76', '77', '78']
     target_speed: '77'
-    aliases: []
-    notes: 国产品牌定位相近型号，需按实际店铺标题复核。
+    aliases: [文杰]
+    notes: 用户指定 10x 系列高端型号。
   - brand: 航空
-    names: [比赛1号, 比赛2号]
+    names: ['101', '101A', '202', '202A', 'EG1101', 'EG1130']
     speeds: ['76', '77', '78']
     target_speed: '77'
-    aliases: [航宇]
-    notes: 国产品牌定位相近型号，需按实际店铺标题复核。
+    aliases: [航宇, 航空]
+    notes: 用户指定 101/202/EG 系列高端型号（A 后缀为改进版）。
 buzz_sources:
   - id: smzdm
     name: 什么值得买羽毛球爆料

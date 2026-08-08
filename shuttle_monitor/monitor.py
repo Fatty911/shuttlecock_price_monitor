@@ -860,7 +860,7 @@ def build_batch_envelope(
         finished_at=finished_at,
         mode=mode,
         baseline_batch_id=baseline_batch_id,
-        expected_tasks=69,
+        expected_tasks=93,
         statuses=public["status"],
         prices=public["prices"],
         evidence_sha256=evidence_sha,
@@ -1597,7 +1597,7 @@ def _source_sha() -> str:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Honest same-card shuttlecock price monitor.")
     parser.add_argument("--config", type=Path, default=CONFIG_PATH)
-    parser.add_argument("--live", action="store_true", help="perform the complete 69-task live round")
+    parser.add_argument("--live", action="store_true", help="perform the complete 93-task live round")
     parser.add_argument("--output", action="store_true")
     parser.add_argument("--quality-gate", action="store_true")
     parser.add_argument("--structure-gate", action="store_true")

@@ -34,7 +34,7 @@ def _envelope(mode: str = "live") -> tuple[dict, list[str]]:
     task_ids = [
         f"{platform}:model-{index}"
         for platform in ("taobao", "jd", "pdd")
-        for index in range(23)
+        for index in range(31)
     ]
     statuses = [_status(task_id) for task_id in task_ids]
     envelope = build_envelope(
@@ -47,7 +47,7 @@ def _envelope(mode: str = "live") -> tuple[dict, list[str]]:
         finished_at="2026-07-30T00:01:00Z",
         mode=mode,
         baseline_batch_id=None,
-        expected_tasks=69,
+        expected_tasks=93,
         statuses=statuses,
         prices=[],
         evidence_sha256="c" * 64,
@@ -56,15 +56,15 @@ def _envelope(mode: str = "live") -> tuple[dict, list[str]]:
     return envelope, task_ids
 
 
-def test_v4_envelope_has_batch_identity_and_exact_69_task_conservation():
+def test_v4_envelope_has_batch_identity_and_exact_93_task_conservation():
     envelope, task_ids = _envelope()
     validate_envelope(envelope, task_ids)
     assert envelope["schema_version"] == 4
     assert envelope["batch_id"] == "shuttlecock_price_monitor:123:2"
     assert envelope["source_sha"] == SOURCE_SHA
     assert envelope["config_sha256"] == CONFIG_SHA
-    assert envelope["summary"]["blocked"] == 69
-    assert sum(envelope["summary"][key] for key in ("success", "blocked", "rejected", "error", "out_of_stock")) == 69
+    assert envelope["summary"]["blocked"] == 93
+    assert sum(envelope["summary"][key] for key in ("success", "blocked", "rejected", "error", "out_of_stock")) == 93
 
 
 def test_non_success_status_with_price_fails_closed():
